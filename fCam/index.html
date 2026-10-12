@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffa000">
+<title>fCam</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='26' fill='%23ffa000'/%3E%3Ccircle cx='30' cy='60' r='7' fill='%23fff'/%3E%3Ccircle cx='56' cy='60' r='11' fill='%23fff'/%3E%3Ccircle cx='90' cy='60' r='16' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/png;base64,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">
+<style>
+:root{--primary:#ffa000;--primary-dark:#ff8f00;--text:#212121;--muted:#757575;--bg:#fafafa;--danger:#b71c1c}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:Roboto,"Segoe UI",system-ui,Arial,sans-serif;font-size:14px;background:var(--bg);color:var(--text)}
+.row{display:flex;align-items:center}
+.grow{flex:1}
+button{font:inherit}
+
+/* app bar */
+.bar{position:fixed;top:0;left:0;right:0;height:56px;padding:0 8px 0 12px;background:var(--primary);color:#fff;
+ box-shadow:0 2px 4px rgba(0,0,0,.3);z-index:10;font-size:20px;font-weight:500}
+.bar .logo{width:32px;height:32px;margin-right:12px;flex:none}
+.bar.sel{display:none;background:#424242;font-size:16px;padding-left:16px}
+body.selecting .bar.main{display:none}
+body.selecting .bar.sel{display:flex}
+.btn{background:none;border:0;color:inherit;font-size:14px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;
+ height:36px;padding:0 12px;margin-left:4px;border-radius:4px;cursor:pointer}
+.btn:hover{background:rgba(255,255,255,.18)}
+.ibtn{width:40px;height:40px;padding:0;margin-left:2px;border:0;border-radius:50%;background:none;color:#fff;cursor:pointer;
+ display:flex;align-items:center;justify-content:center}
+.ibtn:hover{background:rgba(255,255,255,.18)}
+.ibtn svg{width:24px;height:24px;fill:currentColor}
+
+/* content */
+#app,#login{padding-top:72px}
+.wrap{max-width:1100px;margin:0 auto;padding:0 8px}
+.card{background:#fff;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.2);padding:16px;margin-bottom:12px}
+.muted{color:var(--muted)}
+.track{height:6px;background:#ffe0b2;border-radius:3px;margin-top:10px;overflow:hidden}
+.fill{height:100%;width:0;background:var(--primary)}
+#note{display:none;color:var(--danger)}
+#note.info{color:var(--text)}
+
+/* thumbnails */
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.thumb{position:relative;aspect-ratio:4/3;background:#e0e0e0;border-radius:4px;overflow:hidden;cursor:pointer;
+ box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb.sel{outline:3px solid var(--primary);outline-offset:-3px}
+.thumb.sel img{opacity:.8}
+.thumb .cap{position:absolute;left:0;right:0;bottom:0;padding:16px 6px 4px;font-size:11px;color:#fff;
+ background:linear-gradient(to bottom,rgba(0,0,0,0),rgba(0,0,0,.6));pointer-events:none}
+.thumb .chk{position:absolute;top:6px;left:6px;width:24px;height:24px;border-radius:50%;border:2px solid #fff;
+ background:rgba(0,0,0,.3)}
+.thumb.sel .chk{background:var(--primary);border-color:var(--primary)}
+.thumb.sel .chk::after{content:"";position:absolute;left:6px;top:1px;width:6px;height:12px;border:solid #fff;
+ border-width:0 2px 2px 0;transform:rotate(45deg)}
+.raised{background:var(--primary);color:#fff;box-shadow:0 2px 3px rgba(0,0,0,.3);padding:0 20px;margin:0}
+.raised:hover{background:var(--primary-dark)}
+#more{display:none;margin:12px auto}
+#empty{display:none;text-align:center;padding:40px 0}
+
+/* login */
+#login{display:none}
+.lcard{max-width:320px;margin:40px auto 0}
+.lcard h2{margin:0 0 16px;font-size:20px;font-weight:500}
+.field{width:100%;font:inherit;font-size:16px;padding:8px 0;border:0;border-bottom:2px solid var(--primary);background:none;outline:none;color:var(--text)}
+.err{color:var(--danger);min-height:20px;margin-top:8px}
+
+/* lightbox */
+#lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:20}
+#lb.open{display:block}
+#lbImg{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%}
+#lbCap{position:absolute;left:0;right:0;bottom:0;padding:8px 16px;color:#eee;background:rgba(0,0,0,.5);font-size:13px;text-align:center}
+.lbb{position:absolute;color:#fff;background:rgba(0,0,0,.4);border:0;border-radius:50%;width:48px;height:48px;
+ font-size:30px;line-height:48px;text-align:center;cursor:pointer;padding:0}
+.lbb:hover{background:rgba(0,0,0,.7)}
+#lbClose{top:8px;right:8px}
+#lbPrev{left:8px;top:calc(50% - 24px)}
+#lbNext{right:8px;top:calc(50% - 24px)}
+
+/* config dialog */
+dialog#cfg{border:0;border-radius:4px;padding:0;width:min(440px,calc(100vw - 24px));max-height:calc(100vh - 24px);
+ box-shadow:0 11px 15px -7px rgba(0,0,0,.2),0 24px 38px 3px rgba(0,0,0,.14);color:var(--text)}
+dialog#cfg::backdrop{background:rgba(0,0,0,.5)}
+#cfgForm{padding:20px 24px 12px}
+#cfgForm h2{margin:0 0 12px;font-size:20px;font-weight:500}
+.fl{display:block;margin-top:14px;font-size:12px;color:var(--muted)}
+.chkrow{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:14px;color:var(--text)}
+.chkrow input{width:18px;height:18px;accent-color:var(--primary)}
+select.field{background:#fff}
+.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.actions .btn{color:var(--primary-dark);margin:0}
+.actions .btn:hover{background:rgba(255,160,0,.12)}
+.actions .raised{color:#fff}
+.actions .raised:hover{background:var(--primary-dark)}
+.hint{margin-top:10px;font-size:12px;color:var(--muted)}
+
+/* waiting overlay */
+#wait{display:none;position:fixed;inset:0;background:rgba(255,255,255,.92);z-index:30;align-items:center;justify-content:center;
+ flex-direction:column;gap:16px;font-size:16px}
+#wait.on{display:flex}
+.spin{width:40px;height:40px;border:4px solid #ffe0b2;border-top-color:var(--primary);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<header class="bar main row">
+  <svg class="logo" viewBox="0 0 120 120" aria-hidden="true">
+    <rect width="120" height="120" rx="26" fill="#fff"/>
+    <circle cx="30" cy="60" r="7" fill="#ffa000"/>
+    <circle cx="56" cy="60" r="11" fill="#ffa000"/>
+    <circle cx="90" cy="60" r="16" fill="#ffa000"/>
+  </svg>
+  <div class="grow">fCam</div>
+  <span class="row" id="tools" style="display:none">
+    <button class="ibtn" id="bCfg" title="Настройки" aria-label="Настройки">
+      <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.39 10.23 L22.15 11.04 L22.15 12.96 L19.39 13.77 L18.48 15.97 L19.86 18.50 L18.50 19.86 L15.97 18.48 L13.77 19.39 L12.96 22.15 L11.04 22.15 L10.23 19.39 L8.03 18.48 L5.50 19.86 L4.14 18.50 L5.52 15.97 L4.61 13.77 L1.85 12.96 L1.85 11.04 L4.61 10.23 L5.52 8.03 L4.14 5.50 L5.50 4.14 L8.03 5.52 L10.23 4.61 L11.04 1.85 L12.96 1.85 L13.77 4.61 L15.97 5.52 L18.50 4.14 L19.86 5.50 L18.48 8.03Z M15.40 12 A3.4 3.4 0 1 0 8.60 12 A3.4 3.4 0 1 0 15.40 12Z"/></svg>
+    </button>
+    <button class="btn" id="bRefresh">Обновить</button>
+    <button class="btn" id="bLogout">Выйти</button>
+  </span>
+</header>
+<header class="bar sel row">
+  <div class="grow" id="selN">Выбрано: 0</div>
+  <button class="btn" id="bAll">Все</button>
+  <button class="btn" id="bDel">Удалить</button>
+  <button class="btn" id="bCancel">Отмена</button>
+</header>
+
+<div id="login">
+  <div class="wrap">
+    <form class="card lcard" id="loginForm">
+      <h2>Вход</h2>
+      <input class="field" type="password" id="pw" placeholder="Пароль" autocomplete="current-password">
+      <div class="err" id="loginErr"></div>
+      <button type="submit" class="btn raised">Войти</button>
+    </form>
+  </div>
+</div>
+
+<main id="app" style="display:none">
+  <div class="wrap">
+    <div class="card">
+      <div id="storText">Загрузка…</div>
+      <div class="track"><div class="fill" id="fill"></div></div>
+      <div class="muted" id="cnt" style="margin-top:8px"></div>
+    </div>
+    <div class="card" id="note"></div>
+    <div id="grid"></div>
+    <div class="card muted" id="empty">Фото нет</div>
+    <div style="text-align:center"><button class="btn raised" id="more">Показать ещё</button></div>
+  </div>
+</main>
+
+<div id="lb">
+  <img id="lbImg" alt="">
+  <div id="lbCap"></div>
+  <button class="lbb" id="lbClose" aria-label="Закрыть">&times;</button>
+  <button class="lbb" id="lbPrev" aria-label="Назад">&#8249;</button>
+  <button class="lbb" id="lbNext" aria-label="Вперёд">&#8250;</button>
+</div>
+
+<dialog id="cfg">
+  <form id="cfgForm" method="dialog">
+    <h2>Настройки</h2>
+    <label class="chkrow"><input type="checkbox" id="c_autostart">Автозапуск при загрузке системы</label>
+
+    <label class="fl" for="c_camera">Камера</label>
+    <select class="field" id="c_camera"></select>
+
+    <label class="fl" for="c_threshold">Порог срабатывания, % изменившихся точек</label>
+    <input class="field" id="c_threshold" type="number" step="any" min="0.01" required>
+
+    <label class="fl" for="c_min_gap">Минимальное время между сериями, сек</label>
+    <input class="field" id="c_min_gap" type="number" step="1" min="0" required>
+
+    <label class="fl" for="c_count">Кадров в серии</label>
+    <input class="field" id="c_count" type="number" step="1" min="1" required>
+
+    <label class="fl" for="c_interval">Интервал между кадрами серии, сек</label>
+    <input class="field" id="c_interval" type="number" step="any" min="0" required>
+
+    <label class="fl" for="c_keep_days">Хранить фото, дней (0 — не удалять)</label>
+    <input class="field" id="c_keep_days" type="number" step="1" min="0" required>
+
+    <label class="fl" for="c_port">Порт управления</label>
+    <input class="field" id="c_port" type="number" step="1" min="1" max="65535" required>
+
+    <label class="fl" for="c_password">Пароль управления (пусто — без авторизации)</label>
+    <input class="field" id="c_password" type="password" autocomplete="new-password">
+
+    <div class="hint">При сохранении сервис перезапустится, страница перезагрузится.</div>
+    <div class="err" id="cfgErr"></div>
+    <div class="actions">
+      <button type="button" class="btn" id="cfgCancel">Отмена</button>
+      <button type="submit" class="btn raised">Сохранить</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="wait"><div class="spin"></div><div>Перезапуск сервиса…</div></div>
+
+<script>
+(() => {
+  const PAGE = 60;              // сколько превью показывать за раз
+  const COOKIE = 'fcam_pw';
+  let pw = '';
+  let files = [];               // новые первыми
+  let shown = 0;
+  let cur = -1;                 // индекс фото в просмотре
+  let busy = false;
+  let loggedIn = false;
+  let cfgOrig = null;
+  const sel = new Set();
+  const thumbs = new Map();     // имя -> элемент превью
+
+  const $ = id => document.getElementById(id);
+
+  /* ---------- cookie ---------- */
+  const getCookie = () => {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + COOKIE + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  };
+  const setCookie = v => { document.cookie = `${COOKIE}=${encodeURIComponent(v)}; max-age=31536000; path=/; SameSite=Lax`; };
+  const delCookie = () => { document.cookie = `${COOKIE}=; max-age=0; path=/`; };
+
+  /* ---------- API ---------- */
+  const qs = (extra = {}) => new URLSearchParams({ password: pw, ...extra }).toString();
+  const api = (path, extra, init) => fetch(`/api/${path}?${qs(extra)}`, init);
+  const photoUrl = n => `/api/photo?${qs({ name: n })}`;
+  const thumbUrl = n => `/api/thumb?${qs({ name: n })}`;
+
+  /* ---------- форматирование ---------- */
+  const mb = b => Math.round(b / 1048576);
+  const mb1 = b => (b / 1048576).toFixed(1);
+  const spaced = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+
+  function note(text, info) {
+    const n = $('note');
+    if (!text) { n.style.display = 'none'; return; }
+    n.className = 'card' + (info ? ' info' : '');
+    n.textContent = text;
+    n.style.display = 'block';
+  }
+
+  /* ---------- экраны ---------- */
+  function showLogin(err) {
+    loggedIn = false;
+    $('app').style.display = 'none';
+    $('login').style.display = 'block';
+    $('tools').style.display = 'none';
+    $('loginErr').textContent = err || '';
+    $('pw').value = '';
+    document.body.classList.remove('selecting');
+    setTimeout(() => $('pw').focus(), 50);
+  }
+  function showApp() {
+    loggedIn = true;
+    $('login').style.display = 'none';
+    $('app').style.display = 'block';
+    $('tools').style.display = 'flex';
+  }
+
+  /* ---------- загрузка списка ---------- */
+  async function load(userAttempt = false) {
+    let r;
+    try {
+      r = await api('list');
+    } catch (e) {
+      return loggedIn ? note('Нет связи с устройством') : showLogin('Нет связи с устройством');
+    }
+    if (r.status === 403) {
+      delCookie();
+      return showLogin(userAttempt ? 'Неверный пароль' : '');
+    }
+    if (!r.ok) {
+      return loggedIn ? note('Ошибка ' + r.status) : showLogin('Ошибка ' + r.status);
+    }
+    const d = await r.json();
+    setCookie(pw);
+    showApp();
+    apply(d);
+  }
+
+  function apply(d) {
+    const total = mb(d.total_bytes), free = mb(d.free_bytes);
+    $('storText').textContent = `Всего: ${spaced(total)} МБ · Свободно: ${spaced(free)} МБ`;
+    $('fill').style.width = (total > 0 ? Math.max(0, Math.min(100, (total - free) * 100 / total)) : 0) + '%';
+
+    files = (d.files || []).slice().sort((a, b) =>
+      a.time !== b.time ? (a.time < b.time ? 1 : -1) : (a.name < b.name ? 1 : -1));
+    const sum = files.reduce((s, f) => s + f.size, 0);
+    $('cnt').textContent = `Фото: ${files.length} (${spaced(mb(sum))} МБ)`;
+
+    const exist = new Set(files.map(f => f.name));
+    for (const n of [...sel]) if (!exist.has(n)) sel.delete(n);
+    buildGrid();
+    updateSel();
+  }
+
+  /* ---------- сетка превью ---------- */
+  function buildGrid() {
+    $('grid').textContent = '';
+    thumbs.clear();
+    shown = 0;
+    $('empty').style.display = files.length ? 'none' : 'block';
+    showMore();
+  }
+
+  function showMore() {
+    const end = Math.min(shown + PAGE, files.length);
+    const frag = document.createDocumentFragment();
+    for (let i = shown; i < end; i++) frag.appendChild(makeThumb(files[i]));
+    $('grid').appendChild(frag);
+    shown = end;
+    const more = $('more');
+    more.style.display = shown < files.length ? 'inline-block' : 'none';
+    more.textContent = `Показать ещё (${files.length - shown})`;
+  }
+
+  function makeThumb(f) {
+    const d = document.createElement('div');
+    d.className = 'thumb' + (sel.has(f.name) ? ' sel' : '');
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.alt = '';
+    img.src = thumbUrl(f.name);
+    const chk = document.createElement('div');
+    chk.className = 'chk';
+    const cap = document.createElement('div');
+    cap.className = 'cap';
+    cap.textContent = f.time.substring(5);          // ММ-ДД чч:мм:сс
+    d.append(img, chk, cap);
+    d.onclick = () => (sel.size ? toggle(f.name) : openViewer(files.findIndex(x => x.name === f.name)));
+    chk.onclick = e => { e.stopPropagation(); toggle(f.name); };
+    thumbs.set(f.name, d);
+    return d;
+  }
+
+  /* ---------- выбор ---------- */
+  const paint = n => { const t = thumbs.get(n); if (t) t.classList.toggle('sel', sel.has(n)); };
+  function toggle(n) {
+    if (sel.has(n)) sel.delete(n); else sel.add(n);
+    paint(n);
+    updateSel();
+  }
+  function updateSel() {
+    $('selN').textContent = 'Выбрано: ' + sel.size;
+    document.body.classList.toggle('selecting', sel.size > 0);
+  }
+  function selectAll() {
+    files.forEach(f => { sel.add(f.name); paint(f.name); });
+    updateSel();
+  }
+  function clearSel() {
+    const old = [...sel];
+    sel.clear();
+    old.forEach(paint);
+    updateSel();
+  }
+
+  /* ---------- удаление ---------- */
+  async function deleteSelected() {
+    if (busy || !sel.size) return;
+    const list = [...sel];
+    if (!confirm(`Удалить фото: ${list.length} шт.?`)) return;
+    busy = true;
+    let failed = 0;
+    for (let i = 0; i < list.length; i++) {
+      note(`Удаление ${i + 1} из ${list.length}…`, true);
+      try {
+        const r = await api('delete', { name: list[i] });
+        if (!r.ok && r.status !== 404) failed++;
+      } catch (e) { failed++; }
+    }
+    busy = false;
+    sel.clear();
+    updateSel();
+    note(failed ? `Не удалось удалить: ${failed}` : '');
+    load();
+  }
+
+  /* ---------- просмотр ---------- */
+  function openViewer(i) {
+    if (i < 0 || i >= files.length) return;
+    cur = i;
+    const f = files[i];
+    $('lbImg').src = photoUrl(f.name);
+    $('lbCap').textContent = `${f.name} · ${mb1(f.size)} МБ · ${f.time}  (${i + 1} из ${files.length})`;
+    $('lb').classList.add('open');
+  }
+  function closeViewer() {
+    $('lb').classList.remove('open');
+    $('lbImg').removeAttribute('src');
+    cur = -1;
+  }
+  function step(d) {
+    if (cur < 0) return;
+    const n = cur + d;
+    if (n >= 0 && n < files.length) openViewer(n);
+  }
+
+  /* ---------- настройки ---------- */
+  const NUM = { threshold: parseFloat, min_gap: parseInt, count: parseInt, interval: parseFloat, keep_days: parseInt, port: parseInt };
+
+  async function openConfig() {
+    let c;
+    try {
+      const r = await api('config');
+      if (!r.ok) throw new Error(r.status);
+      c = await r.json();
+    } catch (e) {
+      return note('Не удалось получить настройки');
+    }
+    cfgOrig = c;
+    $('c_autostart').checked = !!c.autostart;
+    const sc = $('c_camera');
+    sc.textContent = '';
+    const names = (c.cameras && c.cameras.length) ? c.cameras : ['Камера ' + c.camera];
+    names.forEach((t, i) => sc.add(new Option(t, i)));
+    sc.value = String(c.camera);
+    for (const k of Object.keys(NUM)) $('c_' + k).value = c[k];
+    $('c_password').value = c.password || '';
+    $('cfgErr').textContent = '';
+    $('cfg').showModal();
+  }
+
+  function readConfigForm() {
+    const v = { autostart: $('c_autostart').checked, camera: parseInt($('c_camera').value, 10) };
+    for (const k of Object.keys(NUM)) v[k] = NUM[k]($('c_' + k).value);
+    v.password = $('c_password').value;
+    return v;
+  }
+
+  async function saveConfig(ev) {
+    ev.preventDefault();
+    const form = $('cfgForm');
+    if (!form.reportValidity()) return;
+    const v = readConfigForm();
+    const changed = {};
+    for (const k of Object.keys(v)) if (v[k] !== cfgOrig[k]) changed[k] = v[k];
+    if (!Object.keys(changed).length) { $('cfg').close(); return; }
+
+    let r;
+    try {
+      r = await api('config', {}, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changed) });
+    } catch (e) {
+      $('cfgErr').textContent = 'Нет связи с устройством';
+      return;
+    }
+    if (!r.ok) {
+      $('cfgErr').textContent = r.status === 400 ? (await r.text()).trim() : 'Ошибка ' + r.status;
+      return;
+    }
+    if ('password' in changed) { pw = changed.password; setCookie(pw); }
+    const base = ('port' in changed) ? `${location.protocol}//${location.hostname}:${changed.port}` : location.origin;
+    $('cfg').close();
+    $('wait').classList.add('on');
+    await new Promise(res => setTimeout(res, 1500));
+    for (let i = 0; i < 40; i++) {
+      try {
+        await fetch(`${base}/api/list?${qs()}`, { mode: 'no-cors', cache: 'no-store' });   // ответ без чтения: важно лишь, что сервер поднялся
+        break;
+      } catch (e) {
+        await new Promise(res => setTimeout(res, 1000));
+      }
+    }
+    location.href = base + '/';
+  }
+
+  /* ---------- события ---------- */
+  $('loginForm').onsubmit = e => { e.preventDefault(); pw = $('pw').value; load(true); };
+  $('bRefresh').onclick = () => { note(''); load(); };
+  $('bLogout').onclick = () => { delCookie(); pw = ''; files = []; sel.clear(); showLogin(''); };
+  $('bCfg').onclick = openConfig;
+  $('cfgCancel').onclick = () => $('cfg').close();
+  $('cfgForm').onsubmit = saveConfig;
+  $('bAll').onclick = selectAll;
+  $('bCancel').onclick = clearSel;
+  $('bDel').onclick = deleteSelected;
+  $('more').onclick = showMore;
+  $('lbClose').onclick = closeViewer;
+  $('lbPrev').onclick = () => step(-1);
+  $('lbNext').onclick = () => step(1);
+  $('lb').onclick = e => { if (e.target === $('lb')) closeViewer(); };
+  document.addEventListener('keydown', e => {
+    if (cur < 0) return;
+    if (e.key === 'Escape') closeViewer();
+    else if (e.key === 'ArrowLeft') step(-1);
+    else if (e.key === 'ArrowRight') step(1);
+  });
+  let tx = null;
+  $('lb').addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  $('lb').addEventListener('touchend', e => {
+    if (tx === null) return;
+    const dx = e.changedTouches[0].clientX - tx;
+    tx = null;
+    if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1);
+  });
+
+  /* ---------- старт ---------- */
+  const saved = getCookie();
+  pw = saved === null ? '' : saved;      // пустой пароль подходит, если на устройстве он не задан
+  load();
+})();
+</script>
+</body>
+</html>

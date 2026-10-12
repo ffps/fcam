@@ -35,6 +35,18 @@ public class Prefs {
         return p;
     }
 
+    /** Проверка значений; null, если всё корректно. */
+    public String error() {
+        if (!(threshold > 0)) return "threshold должен быть больше 0";
+        if (minGap < 0) return "min_gap не может быть отрицательным";
+        if (count < 1) return "count должен быть не меньше 1";
+        if (!(interval >= 0)) return "interval не может быть отрицательным";
+        if (keepDays < 0) return "keep_days не может быть отрицательным";
+        if (port < 1 || port > 65535) return "port должен быть от 1 до 65535";
+        if (camera < 0) return "camera не может быть отрицательным";
+        return null;
+    }
+
     public void save(Context c) {
         sp(c).edit()
                 .putBoolean("enabled", enabled)

@@ -12,10 +12,9 @@ import java.net.Socket;
 import java.net.URLDecoder;
 
 /**
- * Минимальный HTTP-сервер (все запросы GET, параметр password):
- * /api/shot, /api/list (JSON), /api/photo?name=файл.jpg (без имени или с неверным именем - 404),
- * /api/delete?name=файл.jpg (удаляет фото),
- * "/" - отдаёт DCIM/fCam/index.html (без пароля, если файл есть).
+ * Минимальный HTTP-сервер. Параметр password - в строке запроса.
+ * GET /api/shot, /api/list (JSON), /api/photo?name=, /api/thumb?name=, /api/delete?name=,
+ * GET/POST /api/config (JSON), GET / - DCIM/fCam/index.html (без пароля).
  */
 public class HttpCtl extends Thread {
 
@@ -29,14 +28,29 @@ public class HttpCtl extends Thread {
         /** Файл фото по имени; null, если имени нет, файла нет или имя недопустимо. */
         File onPhoto(String name);
 
+        /** Файл миниатюры (при невозможности создать - оригинал); null, если фото нет. */
+        File onThumb(String name);
+
         /** Удаление фото по имени: 0 - удалено, 1 - нет такого файла, 2 - не удалось удалить. */
         int onDelete(String name);
+
+        /** Текущие настройки в JSON. */
+        String onConfigGet();
+
+        /** Применяет настройки из JSON; null - успех, иначе текст ошибки. */
+        String onConfigSet(String body);
+
+        /** Перезапуск сервиса после смены настроек (вызывается после отправки ответа). */
+        void onRestart();
 
         /** Файл index.html для "/" или null, если его нет. */
         File onIndex();
 
         void onError(String msg);
     }
+
+    private static final String JSON = "application/json; charset=utf-8";
+    private static final int MAX_BODY = 16384;
 
     private final int port;
     private final String password;
@@ -118,16 +132,24 @@ public class HttpCtl extends Thread {
         BufferedReader r = new BufferedReader(new InputStreamReader(s.getInputStream(), "ISO-8859-1"));
         String line = r.readLine();
         if (line == null) return;
-        for (int i = 0; i < 64; i++) {      // дочитываем заголовки
+        int contentLen = 0;
+        for (int i = 0; i < 64; i++) {      // заголовки
             String h = r.readLine();
             if (h == null || h.length() == 0) break;
+            if (h.regionMatches(true, 0, "content-length:", 0, 15)) {
+                try {
+                    contentLen = Integer.parseInt(h.substring(15).trim());
+                } catch (Exception ignored) {
+                }
+            }
         }
         String[] parts = line.split(" ");
         if (parts.length < 2) {
             reply(s, 400, "Bad Request");
             return;
         }
-        if (!"GET".equals(parts[0])) {
+        boolean post = "POST".equals(parts[0]);
+        if (!post && !"GET".equals(parts[0])) {
             reply(s, 405, "Method Not Allowed");
             return;
         }
@@ -139,20 +161,26 @@ public class HttpCtl extends Thread {
             path = target.substring(0, q);
             query = target.substring(q + 1);
         }
+        if (post && !"/api/config".equals(path)) {
+            reply(s, 405, "Method Not Allowed");
+            return;
+        }
         if ("/".equals(path)) {
             File idx = cb.onIndex();
             if (idx == null || !idx.isFile()) {
                 reply(s, 404, "Not Found");
                 return;
             }
-            sendFile(s, idx, "text/html; charset=utf-8", null);
+            sendFile(s, idx, "text/html; charset=utf-8", null, false);
             return;
         }
         boolean shot = "/api/shot".equals(path);
         boolean list = "/api/list".equals(path);
         boolean photo = "/api/photo".equals(path);
+        boolean thumb = "/api/thumb".equals(path);
         boolean delete = "/api/delete".equals(path);
-        if (!shot && !list && !photo && !delete) {
+        boolean config = "/api/config".equals(path);
+        if (!shot && !list && !photo && !thumb && !delete && !config) {
             reply(s, 404, "Not Found");
             return;
         }
@@ -163,6 +191,33 @@ public class HttpCtl extends Thread {
                 return;
             }
         }
+        if (config) {
+            if (post) {
+                if (contentLen > MAX_BODY) {
+                    reply(s, 413, "Payload Too Large");
+                    return;
+                }
+                char[] buf = new char[contentLen];
+                int off = 0;
+                while (off < contentLen) {
+                    int n = r.read(buf, off, contentLen - off);
+                    if (n < 0) break;
+                    off += n;
+                }
+                // тело читалось как ISO-8859-1 (1 символ = 1 байт), декодируем как UTF-8
+                String body = new String(new String(buf, 0, off).getBytes("ISO-8859-1"), "UTF-8");
+                String err = cb.onConfigSet(body);
+                if (err != null) {
+                    replyBody(s, 400, "Bad Request", err + "\n", "text/plain; charset=utf-8");
+                    return;
+                }
+                replyBody(s, 200, "OK", cb.onConfigGet(), JSON);
+                cb.onRestart();
+                return;
+            }
+            replyBody(s, 200, "OK", cb.onConfigGet(), JSON);
+            return;
+        }
         if (list) {
             String body;
             try {
@@ -171,7 +226,7 @@ public class HttpCtl extends Thread {
                 reply(s, 500, "Error");
                 return;
             }
-            replyBody(s, 200, "OK", body, "application/json; charset=utf-8");
+            replyBody(s, 200, "OK", body, JSON);
             return;
         }
         if (delete) {
@@ -181,13 +236,14 @@ public class HttpCtl extends Thread {
             else reply(s, 500, "Delete failed");
             return;
         }
-        if (photo) {
-            File f = cb.onPhoto(param(query, "name"));
+        if (photo || thumb) {
+            String name = param(query, "name");
+            File f = photo ? cb.onPhoto(name) : cb.onThumb(name);
             if (f == null || !f.isFile()) {
                 reply(s, 404, "Not Found");
                 return;
             }
-            sendFile(s, f, "image/jpeg", f.getName());
+            sendFile(s, f, "image/jpeg", f.getName(), true);
             return;
         }
         int res = cb.onShot();
@@ -212,7 +268,7 @@ public class HttpCtl extends Thread {
         o.flush();
     }
 
-    private void sendFile(Socket s, File f, String type, String dispName) throws IOException {
+    private void sendFile(Socket s, File f, String type, String dispName, boolean cache) throws IOException {
         FileInputStream in;
         try {
             in = new FileInputStream(f);
@@ -225,6 +281,7 @@ public class HttpCtl extends Thread {
                     + "Content-Type: " + type + "\r\n"
                     + "Content-Length: " + f.length() + "\r\n"
                     + (dispName != null ? "Content-Disposition: inline; filename=\"" + dispName + "\"\r\n" : "")
+                    + (cache ? "Cache-Control: private, max-age=86400\r\n" : "")
                     + "Connection: close\r\n\r\n";
             OutputStream o = s.getOutputStream();
             o.write(head.getBytes("ISO-8859-1"));

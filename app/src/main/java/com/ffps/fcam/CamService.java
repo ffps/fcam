@@ -8,10 +8,14 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.net.wifi.WifiManager;
+import android.media.ExifInterface;
 import android.media.MediaScannerConnection;
 import android.os.Build;
 import android.os.Environment;
@@ -23,6 +27,9 @@ import android.os.StatFs;
 import android.view.OrientationEventListener;
 import android.view.WindowManager;
 import android.os.PowerManager;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -137,65 +144,99 @@ public class CamService extends Service implements Camera.PreviewCallback {
                 wifiLock.acquire();
             } catch (Exception ignored) {
             }
-            ht = new HandlerThread("fcam-cam");
-            ht.start();
-            ch = new Handler(ht.getLooper());
-            ch.post(openRunnable);
-            http = new HttpCtl(cfg.port, cfg.password, new HttpCtl.Cb() {
-                @Override
-                public int onShot() {
-                    if (!camReady) return 2;
-                    if (shooting) return 1;
-                    ch.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            startSeries("e");
-                        }
-                    });
-                    return 0;
-                }
-
-                @Override
-                public String onList() {
-                    return listJson();
-                }
-
-                @Override
-                public int onDelete(String name) {
-                    File f = findPhoto(name);
-                    if (f == null) return 1;
-                    boolean ok = f.delete();
-                    if (ok) scanDeleted(new String[]{f.getAbsolutePath()});
-                    return ok ? 0 : 2;
-                }
-
-                @Override
-                public File onIndex() {
-                    return new File(photoDir(), "index.html");
-                }
-
-                @Override
-                public File onPhoto(String name) {
-                    return findPhoto(name);
-                }
-
-                @Override
-                public void onError(String msg) {
-                    lastError = msg;
-                    updateStatus(msg);
-                }
-            });
-            http.start();
+            startWorkers(0);
         }
         return START_STICKY;
     }
 
-    @Override
-    public void onDestroy() {
-        running = false;
-        camOk = false;
-        if (orient != null) orient.disable();
-        if (http != null) http.shutdown();
+    private final Handler mainH = new Handler(Looper.getMainLooper());
+
+    private void startWorkers(long camDelayMs) {
+        ht = new HandlerThread("fcam-cam");
+        ht.start();
+        ch = new Handler(ht.getLooper());
+        ch.postDelayed(openRunnable, camDelayMs);
+        http = new HttpCtl(cfg.port, cfg.password, new HttpCtl.Cb() {
+            @Override
+            public int onShot() {
+                final Handler hh = ch;
+                if (!camReady || hh == null) return 2;
+                if (shooting) return 1;
+                hh.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        startSeries("e");
+                    }
+                });
+                return 0;
+            }
+
+            @Override
+            public String onList() {
+                return listJson();
+            }
+
+            @Override
+            public int onDelete(String name) {
+                File f = findPhoto(name);
+                if (f == null) return 1;
+                boolean ok = f.delete();
+                if (ok) {
+                    deleteThumb(f.getName());
+                    scanDeleted(new String[]{f.getAbsolutePath()});
+                }
+                return ok ? 0 : 2;
+            }
+
+            @Override
+            public File onIndex() {
+                return new File(photoDir(), "index.html");
+            }
+
+            @Override
+            public File onPhoto(String name) {
+                return findPhoto(name);
+            }
+
+            @Override
+            public File onThumb(String name) {
+                return makeThumb(name);
+            }
+
+            @Override
+            public String onConfigGet() {
+                return configJson();
+            }
+
+            @Override
+            public String onConfigSet(String body) {
+                return applyConfig(body);
+            }
+
+            @Override
+            public void onRestart() {
+                mainH.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        restartInternal();
+                    }
+                }, 600);
+            }
+
+            @Override
+            public void onError(String msg) {
+                lastError = msg;
+                updateStatus(msg);
+            }
+        });
+        http.start();
+    }
+
+    private void stopWorkers() {
+        if (http != null) {
+            http.shutdown();
+            http = null;
+        }
         if (ch != null) {
             ch.removeCallbacksAndMessages(null);
             ch.post(new Runnable() {
@@ -207,6 +248,31 @@ public class CamService extends Service implements Camera.PreviewCallback {
                 }
             });
         }
+        ch = null;
+        ht = null;
+    }
+
+    /** Применение новых настроек без остановки самого сервиса. */
+    private void restartInternal() {
+        if (!running) return;
+        stopWorkers();
+        cfg = Prefs.load(this);
+        shooting = false;
+        camReady = false;
+        camOk = false;
+        lastError = null;
+        status = "Работает, порт " + cfg.port;
+        nm.notify(ID_RUN, buildRunNotification());
+        startWorkers(1000);      // камере нужно время, чтобы освободиться
+    }
+
+    @Override
+    public void onDestroy() {
+        running = false;
+        camOk = false;
+        if (orient != null) orient.disable();
+        mainH.removeCallbacksAndMessages(null);
+        stopWorkers();
         if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         if (wl != null && wl.isHeld()) wl.release();
         super.onDestroy();
@@ -477,12 +543,15 @@ public class CamService extends Service implements Camera.PreviewCallback {
                 finishSeries();
                 camReady = false;
                 closeCam();
-                ch.post(openRunnable);
+                Handler h1 = ch;
+                if (h1 != null) h1.post(openRunnable);
                 return;
             }
             if (shotIdx < cfg.count) {
                 long delay = Math.max(300L, (long) (cfg.interval * 1000));
-                ch.postDelayed(shotRunnable, delay);
+                Handler h2 = ch;
+                if (h2 != null) h2.postDelayed(shotRunnable, delay);
+                else finishSeries();
             } else {
                 finishSeries();
                 cleanupOld();
@@ -515,7 +584,10 @@ public class CamService extends Service implements Camera.PreviewCallback {
             long limit = System.currentTimeMillis() - cfg.keepDays * 86400000L;
             java.util.ArrayList<String> gone = new java.util.ArrayList<String>();
             for (File f : photos()) {
-                if (f.lastModified() < limit && f.delete()) gone.add(f.getAbsolutePath());
+                if (f.lastModified() < limit && f.delete()) {
+                    deleteThumb(f.getName());
+                    gone.add(f.getAbsolutePath());
+                }
             }
             if (!gone.isEmpty()) scanDeleted(gone.toArray(new String[gone.size()]));
         } catch (Exception ignored) {
@@ -611,5 +683,151 @@ public class CamService extends Service implements Camera.PreviewCallback {
         }
         sb.append("}\n");
         return sb.toString();
+    }
+
+    // ---------- миниатюры ----------
+
+    private static final int THUMB_SIZE = 320;
+    private final Object thumbLock = new Object();
+
+    private File thumbDir() {
+        return new File(getCacheDir(), "thumbs");
+    }
+
+    private void deleteThumb(String name) {
+        try {
+            new File(thumbDir(), name).delete();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static int exifDegrees(File f) {
+        try {
+            int o = new ExifInterface(f.getAbsolutePath()).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1);
+            if (o == ExifInterface.ORIENTATION_ROTATE_90) return 90;
+            if (o == ExifInterface.ORIENTATION_ROTATE_180) return 180;
+            if (o == ExifInterface.ORIENTATION_ROTATE_270) return 270;
+        } catch (Exception ignored) {
+        }
+        return 0;
+    }
+
+    /** Миниатюра фото (кэшируется в cache/thumbs); если создать не удалось - оригинал. */
+    private File makeThumb(String name) {
+        File src = findPhoto(name);
+        if (src == null) return null;
+        File dir = thumbDir();
+        File t = new File(dir, src.getName());
+        if (t.isFile() && t.lastModified() >= src.lastModified()) return t;
+        synchronized (thumbLock) {      // по одной штуке, чтобы не перегружать слабое устройство
+            if (t.isFile() && t.lastModified() >= src.lastModified()) return t;
+            try {
+                dir.mkdirs();
+                BitmapFactory.Options o = new BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(src.getAbsolutePath(), o);
+                int max = Math.max(o.outWidth, o.outHeight);
+                if (max <= 0) return src;
+                int sample = 1;
+                while (max / (sample * 2) >= THUMB_SIZE) sample *= 2;
+                o = new BitmapFactory.Options();
+                o.inSampleSize = sample;
+                o.inPreferredConfig = Bitmap.Config.RGB_565;
+                Bitmap b = BitmapFactory.decodeFile(src.getAbsolutePath(), o);
+                if (b == null) return src;
+                float sc = (float) THUMB_SIZE / Math.max(b.getWidth(), b.getHeight());
+                Matrix m = new Matrix();
+                if (sc < 1f) m.postScale(sc, sc);
+                int deg = exifDegrees(src);
+                if (deg != 0) m.postRotate(deg);
+                Bitmap r = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), m, true);
+                if (r != b) b.recycle();
+                File tmp = new File(dir, src.getName() + ".tmp");
+                FileOutputStream out = new FileOutputStream(tmp);
+                try {
+                    r.compress(Bitmap.CompressFormat.JPEG, 75, out);
+                } finally {
+                    out.close();
+                }
+                r.recycle();
+                if (!tmp.renameTo(t)) return src;
+                return t;
+            } catch (Throwable e) {      // в том числе OutOfMemoryError
+                return src;
+            }
+        }
+    }
+
+    // ---------- настройки по HTTP ----------
+
+    private static String[] cameraNames() {
+        int n = 0;
+        try {
+            n = Camera.getNumberOfCameras();
+        } catch (Exception ignored) {
+        }
+        String[] r = new String[n];
+        for (int i = 0; i < n; i++) {
+            String kind = "";
+            try {
+                Camera.CameraInfo ci = new Camera.CameraInfo();
+                Camera.getCameraInfo(i, ci);
+                kind = ci.facing == Camera.CameraInfo.CAMERA_FACING_FRONT ? " (фронтальная)" : " (задняя)";
+            } catch (Exception ignored) {
+            }
+            r[i] = "Камера " + i + kind;
+        }
+        return r;
+    }
+
+    private String configJson() {
+        Prefs p = Prefs.load(this);
+        StringBuilder sb = new StringBuilder("{\n");
+        sb.append("  \"autostart\": ").append(p.autostart).append(",\n");
+        sb.append("  \"camera\": ").append(p.camera).append(",\n");
+        sb.append("  \"threshold\": ").append(p.threshold).append(",\n");
+        sb.append("  \"min_gap\": ").append(p.minGap).append(",\n");
+        sb.append("  \"count\": ").append(p.count).append(",\n");
+        sb.append("  \"interval\": ").append(p.interval).append(",\n");
+        sb.append("  \"keep_days\": ").append(p.keepDays).append(",\n");
+        sb.append("  \"port\": ").append(p.port).append(",\n");
+        sb.append("  \"password\": ").append(jq(p.password)).append(",\n");
+        sb.append("  \"cameras\": [");      // справочно, при записи игнорируется
+        String[] names = cameraNames();
+        for (int i = 0; i < names.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(jq(names[i]));
+        }
+        sb.append("]\n}\n");
+        return sb.toString();
+    }
+
+    /** Меняет только те настройки, что есть в JSON. null - успех, иначе текст ошибки. */
+    private String applyConfig(String body) {
+        JSONObject j;
+        try {
+            j = new JSONObject(body);
+        } catch (Exception e) {
+            return "Некорректный JSON";
+        }
+        Prefs p = Prefs.load(this);
+        try {
+            if (j.has("autostart")) p.autostart = j.getBoolean("autostart");
+            if (j.has("camera")) p.camera = j.getInt("camera");
+            if (j.has("threshold")) p.threshold = (float) j.getDouble("threshold");
+            if (j.has("min_gap")) p.minGap = j.getInt("min_gap");
+            if (j.has("count")) p.count = j.getInt("count");
+            if (j.has("interval")) p.interval = (float) j.getDouble("interval");
+            if (j.has("keep_days")) p.keepDays = j.getInt("keep_days");
+            if (j.has("port")) p.port = j.getInt("port");
+            if (j.has("password")) p.password = j.getString("password");
+        } catch (JSONException e) {
+            return "Неверный тип значения: " + e.getMessage();
+        }
+        String err = p.error();
+        if (err != null) return err;
+        p.enabled = true;
+        p.save(this);
+        return null;
     }
 }
