@@ -136,7 +136,17 @@ public class CamService extends Service implements Camera.PreviewCallback {
 
                 @Override
                 public String onList() {
-                    return listText();
+                    return listJson();
+                }
+
+                @Override
+                public File onIndex() {
+                    return new File(photoDir(), "index.html");
+                }
+
+                @Override
+                public File onPhoto(String name) {
+                    return findPhoto(name);
                 }
 
                 @Override
@@ -435,9 +445,43 @@ public class CamService extends Service implements Camera.PreviewCallback {
         }
     }
 
+    private static java.util.ArrayList<File> photos() {
+        java.util.ArrayList<File> list = new java.util.ArrayList<File>();
+        File[] files = photoDir().listFiles();
+        if (files != null) {
+            for (File f : files) {
+                if (f.isFile() && f.getName().toLowerCase(Locale.US).endsWith(".jpg")) list.add(f);
+            }
+        }
+        java.util.Collections.sort(list);
+        return list;
+    }
+
+    /** Файл для /api/photo: по имени или последний (если имя не задано). */
+    private static File findPhoto(String name) {
+        if (name == null || name.length() == 0) {
+            java.util.ArrayList<File> l = photos();
+            return l.isEmpty() ? null : l.get(l.size() - 1);
+        }
+        if (name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.startsWith(".")
+                || !name.toLowerCase(Locale.US).endsWith(".jpg")) return null;
+        File f = new File(photoDir(), name);
+        return f.isFile() ? f : null;
+    }
+
+    private static String jq(String v) {
+        StringBuilder b = new StringBuilder("\"");
+        for (int i = 0; i < v.length(); i++) {
+            char c = v.charAt(i);
+            if (c == '"' || c == '\\') b.append('\\').append(c);
+            else if (c < 0x20) b.append(String.format(Locale.US, "\\u%04x", (int) c));
+            else b.append(c);
+        }
+        return b.append('"').toString();
+    }
+
     /** Ответ на /api/list. */
-    private String listText() {
-        StringBuilder sb = new StringBuilder();
+    private String listJson() {
         File dir = photoDir();
         long total = 0, free = 0;
         try {
@@ -448,22 +492,21 @@ public class CamService extends Service implements Camera.PreviewCallback {
             free = bs * st.getAvailableBlocks();
         } catch (Exception ignored) {
         }
-        File[] files = dir.listFiles();
-        java.util.ArrayList<File> list = new java.util.ArrayList<File>();
-        if (files != null) {
-            for (File f : files) {
-                if (f.isFile() && f.getName().toLowerCase(Locale.US).endsWith(".jpg")) list.add(f);
-            }
-        }
-        java.util.Collections.sort(list);
         SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
-        sb.append("total_bytes: ").append(total).append('\n');
-        sb.append("free_bytes: ").append(free).append('\n');
-        sb.append("files: ").append(list.size()).append('\n');
-        for (File f : list) {
-            sb.append(f.getName()).append('\t').append(f.length()).append('\t')
-                    .append(df.format(new Date(f.lastModified()))).append('\n');
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"total_bytes\":").append(total)
+                .append(",\"free_bytes\":").append(free)
+                .append(",\"files\":[");
+        boolean first = true;
+        for (File f : photos()) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append("{\"name\":").append(jq(f.getName()))
+                    .append(",\"size\":").append(f.length())
+                    .append(",\"time\":").append(jq(df.format(new Date(f.lastModified()))))
+                    .append('}');
         }
+        sb.append("]}");
         return sb.toString();
     }
 }

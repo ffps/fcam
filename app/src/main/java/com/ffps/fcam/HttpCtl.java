@@ -1,6 +1,8 @@
 package com.ffps.fcam;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -9,15 +11,25 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URLDecoder;
 
-/** Минимальный HTTP-сервер: GET /api/shot?password=..., GET /api/list?password=... */
+/**
+ * Минимальный HTTP-сервер (все запросы GET, параметр password):
+ * /api/shot, /api/list (JSON), /api/photo?name=файл.jpg (без name - последнее фото),
+ * "/" - отдаёт DCIM/fCam/index.html (без пароля, если файл есть).
+ */
 public class HttpCtl extends Thread {
 
     public interface Cb {
         /** 0 - запущено, 1 - серия уже идёт, 2 - камера недоступна */
         int onShot();
 
-        /** Текст для /api/list. */
+        /** JSON для /api/list. */
         String onList();
+
+        /** Файл фото по имени (null/пусто - последнее); null, если нет или имя недопустимо. */
+        File onPhoto(String name);
+
+        /** Файл index.html для "/" или null, если его нет. */
+        File onIndex();
 
         void onError(String msg);
     }
@@ -54,25 +66,46 @@ public class HttpCtl extends Thread {
             return;
         }
         while (!stopped) {
-            Socket s = null;
             try {
-                s = ss.accept();
-                handle(s);
+                final Socket s = ss.accept();
+                Thread t = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            handle(s);
+                        } catch (IOException ignored) {
+                        } finally {
+                            try {
+                                s.close();
+                            } catch (IOException ignored) {
+                            }
+                        }
+                    }
+                }, "fcam-conn");
+                t.setDaemon(true);
+                t.start();
             } catch (IOException e) {
                 if (stopped) break;
-            } finally {
-                if (s != null) {
-                    try {
-                        s.close();
-                    } catch (IOException ignored) {
-                    }
-                }
             }
         }
     }
 
+    private static String param(String query, String key) {
+        for (String kv : query.split("&")) {
+            int e = kv.indexOf('=');
+            if (e > 0 && key.equals(kv.substring(0, e))) {
+                try {
+                    return URLDecoder.decode(kv.substring(e + 1), "UTF-8");
+                } catch (Exception ex) {
+                    return "";
+                }
+            }
+        }
+        return null;
+    }
+
     private void handle(Socket s) throws IOException {
-        s.setSoTimeout(3000);
+        s.setSoTimeout(5000);
         BufferedReader r = new BufferedReader(new InputStreamReader(s.getInputStream(), "ISO-8859-1"));
         String line = r.readLine();
         if (line == null) return;
@@ -97,24 +130,25 @@ public class HttpCtl extends Thread {
             path = target.substring(0, q);
             query = target.substring(q + 1);
         }
+        if ("/".equals(path)) {
+            File idx = cb.onIndex();
+            if (idx == null || !idx.isFile()) {
+                reply(s, 404, "Not Found");
+                return;
+            }
+            sendFile(s, idx, "text/html; charset=utf-8", null);
+            return;
+        }
+        boolean shot = "/api/shot".equals(path);
         boolean list = "/api/list".equals(path);
-        if (!list && !"/api/shot".equals(path)) {
+        boolean photo = "/api/photo".equals(path);
+        if (!shot && !list && !photo) {
             reply(s, 404, "Not Found");
             return;
         }
         if (password.length() > 0) {
-            String given = "";
-            for (String kv : query.split("&")) {
-                int e = kv.indexOf('=');
-                if (e > 0 && "password".equals(kv.substring(0, e))) {
-                    try {
-                        given = URLDecoder.decode(kv.substring(e + 1), "UTF-8");
-                    } catch (Exception ex) {
-                        given = "";
-                    }
-                }
-            }
-            if (!password.equals(given)) {
+            String given = param(query, "password");
+            if (given == null || !password.equals(given)) {
                 reply(s, 403, "Forbidden");
                 return;
             }
@@ -127,7 +161,16 @@ public class HttpCtl extends Thread {
                 reply(s, 500, "Error");
                 return;
             }
-            replyBody(s, 200, "OK", body);
+            replyBody(s, 200, "OK", body, "application/json; charset=utf-8");
+            return;
+        }
+        if (photo) {
+            File f = cb.onPhoto(param(query, "name"));
+            if (f == null || !f.isFile()) {
+                reply(s, 404, "Not Found");
+                return;
+            }
+            sendFile(s, f, "image/jpeg", f.getName());
             return;
         }
         int res = cb.onShot();
@@ -137,18 +180,43 @@ public class HttpCtl extends Thread {
     }
 
     private void reply(Socket s, int code, String text) throws IOException {
-        replyBody(s, code, text, text + "\n");
+        replyBody(s, code, text, text + "\n", "text/plain; charset=utf-8");
     }
 
-    private void replyBody(Socket s, int code, String text, String bodyText) throws IOException {
+    private void replyBody(Socket s, int code, String text, String bodyText, String type) throws IOException {
         byte[] body = bodyText.getBytes("UTF-8");
         String head = "HTTP/1.1 " + code + " " + text + "\r\n"
-                + "Content-Type: text/plain; charset=utf-8\r\n"
+                + "Content-Type: " + type + "\r\n"
                 + "Content-Length: " + body.length + "\r\n"
                 + "Connection: close\r\n\r\n";
         OutputStream o = s.getOutputStream();
         o.write(head.getBytes("ISO-8859-1"));
         o.write(body);
         o.flush();
+    }
+
+    private void sendFile(Socket s, File f, String type, String dispName) throws IOException {
+        FileInputStream in;
+        try {
+            in = new FileInputStream(f);
+        } catch (IOException e) {
+            reply(s, 404, "Not Found");
+            return;
+        }
+        try {
+            String head = "HTTP/1.1 200 OK\r\n"
+                    + "Content-Type: " + type + "\r\n"
+                    + "Content-Length: " + f.length() + "\r\n"
+                    + (dispName != null ? "Content-Disposition: inline; filename=\"" + dispName + "\"\r\n" : "")
+                    + "Connection: close\r\n\r\n";
+            OutputStream o = s.getOutputStream();
+            o.write(head.getBytes("ISO-8859-1"));
+            byte[] b = new byte[16384];
+            int n;
+            while ((n = in.read(b)) > 0) o.write(b, 0, n);
+            o.flush();
+        } finally {
+            in.close();
+        }
     }
 }
