@@ -10,23 +10,11 @@
         android:padding="16dp">
 
         <TextView
-            android:id="@+id/tvVer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <TextView
             android:id="@+id/tvStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingBottom="8dp" />
-
-        <CheckBox
-            android:id="@+id/cbOn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Включено" />
+            android:paddingBottom="8dp"
+            android:textIsSelectable="true" />
 
         <CheckBox
             android:id="@+id/cbAuto"
@@ -122,10 +110,17 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Сохранить и применить" />
+            android:text="START SERVICE" />
 
         <TextView
             android:id="@+id/tvHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="12dp"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/tvVer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="12dp"

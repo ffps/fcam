@@ -33,6 +33,8 @@ import java.util.Locale;
 public class CamService extends Service implements Camera.PreviewCallback {
 
     public static volatile boolean running = false;
+    public static volatile boolean camOk = false;
+    public static volatile String lastError = null;
 
     private static final int ID_RUN = 1;
     private static final int ID_SHOT = 2;
@@ -94,12 +96,18 @@ public class CamService extends Service implements Camera.PreviewCallback {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         cfg = Prefs.load(this);
+        lastError = null;
         status = "Работает, порт " + cfg.port;
         try {
             startForegroundCompat(buildRunNotification());
-        } catch (Exception e) {      // нет разрешения на камеру / запрет запуска из фона
-            stopSelf();
-            return START_NOT_STICKY;
+        } catch (Exception e) {
+            try {      // повтор без типа сервиса
+                startForeground(ID_RUN, buildRunNotification());
+            } catch (Exception e2) {      // нет разрешения на камеру / запрет запуска из фона
+                lastError = "startForeground: " + e2;
+                stopSelf();
+                return START_NOT_STICKY;
+            }
         }
         if (!cfg.enabled) {
             stopSelf();
@@ -112,7 +120,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
             wl.acquire();
             try {
                 WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "fcam:wifi");
+                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "fcam:wifi");
                 wifiLock.acquire();
             } catch (Exception ignored) {
             }
@@ -151,6 +159,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
 
                 @Override
                 public void onError(String msg) {
+                    lastError = msg;
                     updateStatus(msg);
                 }
             });
@@ -162,6 +171,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
     @Override
     public void onDestroy() {
         running = false;
+        camOk = false;
         if (http != null) http.shutdown();
         if (ch != null) {
             ch.removeCallbacksAndMessages(null);
@@ -270,11 +280,26 @@ public class CamService extends Service implements Camera.PreviewCallback {
             buf = new byte[pw * ph * ImageFormat.getBitsPerPixel(ImageFormat.NV21) / 8];
             tex = new SurfaceTexture(0);
             cam.setPreviewTexture(tex);
+            try {      // снижаем частоту превью до минимально достаточной для анализа (~5 к/с)
+                Camera.Parameters p2 = cam.getParameters();
+                int[] bestR = null;
+                for (int[] r : p2.getSupportedPreviewFpsRange()) {
+                    if (r[1] >= 5000 && (bestR == null || r[1] < bestR[1]
+                            || (r[1] == bestR[1] && r[0] > bestR[0]))) bestR = r;
+                }
+                if (bestR != null) {
+                    p2.setPreviewFpsRange(bestR[0], bestR[1]);
+                    cam.setParameters(p2);
+                }
+            } catch (Exception ignored) {
+            }
             startPreview();
             camReady = true;
+            camOk = true;
             updateStatus("Работает, порт " + cfg.port);
         } catch (Exception e) {
             camReady = false;
+            camOk = false;
             closeCam();
             updateStatus("Камера недоступна, повтор через 10 с");
             if (ch != null) ch.postDelayed(openRunnable, 10000);
@@ -457,12 +482,9 @@ public class CamService extends Service implements Camera.PreviewCallback {
         return list;
     }
 
-    /** Файл для /api/photo: по имени или последний (если имя не задано). */
+    /** Файл для /api/photo: только по имени. */
     private static File findPhoto(String name) {
-        if (name == null || name.length() == 0) {
-            java.util.ArrayList<File> l = photos();
-            return l.isEmpty() ? null : l.get(l.size() - 1);
-        }
+        if (name == null || name.length() == 0) return null;
         if (name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.startsWith(".")
                 || !name.toLowerCase(Locale.US).endsWith(".jpg")) return null;
         File f = new File(photoDir(), name);

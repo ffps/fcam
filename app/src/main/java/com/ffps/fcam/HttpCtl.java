@@ -13,7 +13,7 @@ import java.net.URLDecoder;
 
 /**
  * Минимальный HTTP-сервер (все запросы GET, параметр password):
- * /api/shot, /api/list (JSON), /api/photo?name=файл.jpg (без name - последнее фото),
+ * /api/shot, /api/list (JSON), /api/photo?name=файл.jpg (без имени или с неверным именем - 404),
  * "/" - отдаёт DCIM/fCam/index.html (без пароля, если файл есть).
  */
 public class HttpCtl extends Thread {
@@ -25,7 +25,7 @@ public class HttpCtl extends Thread {
         /** JSON для /api/list. */
         String onList();
 
-        /** Файл фото по имени (null/пусто - последнее); null, если нет или имя недопустимо. */
+        /** Файл фото по имени; null, если имени нет, файла нет или имя недопустимо. */
         File onPhoto(String name);
 
         /** Файл index.html для "/" или null, если его нет. */
@@ -106,6 +106,11 @@ public class HttpCtl extends Thread {
 
     private void handle(Socket s) throws IOException {
         s.setSoTimeout(5000);
+        try {
+            s.setTcpNoDelay(true);
+            s.setSendBufferSize(262144);
+        } catch (Exception ignored) {
+        }
         BufferedReader r = new BufferedReader(new InputStreamReader(s.getInputStream(), "ISO-8859-1"));
         String line = r.readLine();
         if (line == null) return;
@@ -211,7 +216,7 @@ public class HttpCtl extends Thread {
                     + "Connection: close\r\n\r\n";
             OutputStream o = s.getOutputStream();
             o.write(head.getBytes("ISO-8859-1"));
-            byte[] b = new byte[16384];
+            byte[] b = new byte[65536];
             int n;
             while ((n = in.read(b)) > 0) o.write(b, 0, n);
             o.flush();
