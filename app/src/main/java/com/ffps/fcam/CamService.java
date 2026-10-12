@@ -156,6 +156,12 @@ public class CamService extends Service implements Camera.PreviewCallback {
         ht.start();
         ch = new Handler(ht.getLooper());
         ch.postDelayed(openRunnable, camDelayMs);
+        ch.post(new Runnable() {
+            @Override
+            public void run() {
+                pruneThumbs();
+            }
+        });
         http = new HttpCtl(cfg.port, cfg.password, new HttpCtl.Cb() {
             @Override
             public int onShot() {
@@ -555,6 +561,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
             } else {
                 finishSeries();
                 cleanupOld();
+                pruneThumbs();
             }
         }
     };
@@ -697,6 +704,22 @@ public class CamService extends Service implements Camera.PreviewCallback {
     private void deleteThumb(String name) {
         try {
             new File(thumbDir(), name).delete();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Удаляет миниатюры, для которых больше нет фото (например, фото удалили снаружи). */
+    private void pruneThumbs() {
+        try {
+            File[] ts = thumbDir().listFiles();
+            if (ts == null || ts.length == 0) return;
+            java.util.HashSet<String> names = new java.util.HashSet<String>();
+            for (File f : photos()) names.add(f.getName());
+            synchronized (thumbLock) {      // не трогаем файл, который сейчас создаётся
+                for (File t : ts) {
+                    if (!names.contains(t.getName())) t.delete();
+                }
+            }
         } catch (Exception ignored) {
         }
     }
