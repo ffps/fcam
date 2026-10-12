@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fCam</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:Roboto,"Segoe UI",Arial,sans-serif;font-size:14px;background:#fafafa;color:#212121}
+.row{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center}
+.grow{-webkit-box-flex:1;-webkit-flex:1;flex:1}
+
+/* app bar */
+.bar{position:fixed;top:0;left:0;right:0;height:56px;padding:0 8px 0 16px;background:#ffa000;color:#fff;
+ box-shadow:0 2px 4px rgba(0,0,0,.3);z-index:10;font-size:20px;font-weight:500}
+.bar.sel{display:none;background:#424242;font-size:16px}
+body.selecting .bar.main{display:none}
+body.selecting .bar.sel{display:-webkit-box;display:-webkit-flex;display:flex}
+.btn{background:none;border:0;color:inherit;font:inherit;font-size:14px;font-weight:500;text-transform:uppercase;
+ height:36px;padding:0 12px;margin-left:4px;border-radius:2px;cursor:pointer}
+.btn:hover,.btn:active{background:rgba(255,255,255,.2)}
+
+/* content */
+#app,#login{padding-top:72px}
+.wrap{max-width:1100px;margin:0 auto;padding:0 8px}
+.card{background:#fff;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.2);padding:16px;margin-bottom:12px}
+.muted{color:#757575}
+.track{height:6px;background:#ffe0b2;border-radius:3px;margin-top:10px;overflow:hidden}
+.fill{height:6px;width:0;background:#ffa000}
+#note{display:none;color:#b71c1c}
+#note.info{color:#212121}
+
+/* thumbnails */
+#grid{font-size:0;margin:0 -4px}
+.thumb{position:relative;display:inline-block;vertical-align:top;width:160px;height:120px;margin:4px;
+ background-color:#e0e0e0;background-size:cover;background-position:center;border-radius:2px;cursor:pointer;
+ box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.thumb.sel{outline:3px solid #ffa000;outline-offset:-3px}
+.thumb .cap{position:absolute;left:0;right:0;bottom:0;padding:14px 6px 4px;font-size:11px;color:#fff;
+ background:-webkit-linear-gradient(top,rgba(0,0,0,0),rgba(0,0,0,.6));background:linear-gradient(to bottom,rgba(0,0,0,0),rgba(0,0,0,.6))}
+.thumb .chk{position:absolute;top:6px;left:6px;width:24px;height:24px;border-radius:12px;border:2px solid #fff;
+ background:rgba(0,0,0,.3)}
+.thumb.sel .chk{background:#ffa000;border-color:#ffa000}
+.thumb.sel .chk:after{content:"";position:absolute;left:6px;top:1px;width:6px;height:12px;border:solid #fff;
+ border-width:0 2px 2px 0;-webkit-transform:rotate(45deg);transform:rotate(45deg)}
+#more{display:none;margin:12px auto;background:#ffa000;color:#fff;box-shadow:0 2px 3px rgba(0,0,0,.3)}
+#more:hover{background:#ff8f00}
+#empty{display:none;text-align:center;padding:40px 0}
+
+/* login */
+#login{display:none}
+.lcard{max-width:320px;margin:40px auto 0}
+.lcard h2{margin:0 0 16px;font-size:20px;font-weight:500}
+.lcard input{width:100%;font:inherit;font-size:16px;padding:8px 0;border:0;border-bottom:2px solid #ffa000;background:none;outline:none}
+.lcard .err{color:#b71c1c;min-height:20px;margin-top:8px}
+.raised{margin-top:12px;background:#ffa000;color:#fff;box-shadow:0 2px 3px rgba(0,0,0,.3);padding:0 20px}
+.raised:hover{background:#ff8f00}
+
+/* lightbox */
+#lb{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.93);z-index:20}
+#lb.open{display:block}
+#lbImg{position:absolute;top:0;bottom:0;left:0;right:0;margin:auto;max-width:100%;max-height:100%}
+#lbCap{position:absolute;left:0;right:0;bottom:0;padding:8px 16px;color:#eee;background:rgba(0,0,0,.5);font-size:13px;text-align:center}
+.lbb{position:absolute;color:#fff;background:rgba(0,0,0,.4);border:0;border-radius:24px;width:48px;height:48px;
+ font-size:30px;line-height:48px;text-align:center;cursor:pointer;padding:0}
+.lbb:hover{background:rgba(0,0,0,.7)}
+#lbClose{top:8px;right:8px}
+#lbPrev{left:8px;top:50%;margin-top:-24px}
+#lbNext{right:8px;top:50%;margin-top:-24px}
+</style>
+</head>
+<body>
+
+<div class="bar main row">
+  <div class="grow">fCam</div>
+  <span id="tools">
+    <button class="btn" id="bRefresh">Обновить</button>
+    <button class="btn" id="bLogout">Выйти</button>
+  </span>
+</div>
+<div class="bar sel row">
+  <div class="grow" id="selN">Выбрано: 0</div>
+  <button class="btn" id="bAll">Все</button>
+  <button class="btn" id="bDel">Удалить</button>
+  <button class="btn" id="bCancel">Отмена</button>
+</div>
+
+<div id="login">
+  <div class="wrap">
+    <form class="card lcard" id="loginForm" autocomplete="off">
+      <h2>Вход</h2>
+      <input type="password" id="pw" placeholder="Пароль" autocomplete="current-password">
+      <div class="err" id="loginErr"></div>
+      <button type="submit" class="btn raised">Войти</button>
+    </form>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <div class="wrap">
+    <div class="card">
+      <div id="storText">Загрузка…</div>
+      <div class="track"><div class="fill" id="fill"></div></div>
+      <div class="muted" id="cnt" style="margin-top:8px"></div>
+    </div>
+    <div class="card" id="note"></div>
+    <div id="grid"></div>
+    <div class="card muted" id="empty">Фото нет</div>
+    <div style="text-align:center"><button class="btn" id="more">Показать ещё</button></div>
+  </div>
+</div>
+
+<div id="lb">
+  <img id="lbImg" alt="">
+  <div id="lbCap"></div>
+  <button class="lbb" id="lbClose">&times;</button>
+  <button class="lbb" id="lbPrev">&#8249;</button>
+  <button class="lbb" id="lbNext">&#8250;</button>
+</div>
+
+<script>
+(function () {
+  var PAGE = 24;            // сколько превью показывать за раз
+  var COOKIE = 'fcam_pw';
+  var pw = '';
+  var files = [];           // отсортированы: новые первыми
+  var shown = 0;
+  var sel = {};             // выбранные имена
+  var thumbs = {};          // имя -> элемент превью
+  var cur = -1;             // индекс фото в просмотре
+  var busy = false;
+
+  function $(id) { return document.getElementById(id); }
+
+  /* ---------- cookie ---------- */
+  function getCookie() {
+    var m = document.cookie.match(new RegExp('(?:^|; )' + COOKIE + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  function setCookie(v) {
+    document.cookie = COOKIE + '=' + encodeURIComponent(v) + '; max-age=31536000; path=/';
+  }
+  function delCookie() {
+    document.cookie = COOKIE + '=; max-age=0; path=/';
+  }
+
+  /* ---------- API ---------- */
+  function api(path, params, cb) {
+    var q = ['password=' + encodeURIComponent(pw)];
+    for (var k in params) {
+      if (params.hasOwnProperty(k)) q.push(k + '=' + encodeURIComponent(params[k]));
+    }
+    var x = new XMLHttpRequest();
+    x.open('GET', '/api/' + path + '?' + q.join('&'), true);
+    x.timeout = 30000;
+    x.onreadystatechange = function () {
+      if (x.readyState === 4) cb(x.status, x.responseText);
+    };
+    x.ontimeout = function () { cb(0, ''); };
+    x.send();
+  }
+  function photoUrl(name) {
+    return '/api/photo?password=' + encodeURIComponent(pw) + '&name=' + encodeURIComponent(name);
+  }
+
+  /* ---------- форматирование ---------- */
+  function spaced(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0'); }
+  function mb(bytes) { return Math.round(bytes / 1048576); }
+  function mb1(bytes) { return (bytes / 1048576).toFixed(1); }
+
+  function note(text, info) {
+    var n = $('note');
+    if (!text) { n.style.display = 'none'; return; }
+    n.className = 'card' + (info ? ' info' : '');
+    n.textContent = text;
+    n.style.display = 'block';
+  }
+
+  /* ---------- экраны ---------- */
+  function showLogin(err) {
+    $('app').style.display = 'none';
+    $('login').style.display = 'block';
+    $('tools').style.display = 'none';
+    $('loginErr').textContent = err || '';
+    $('pw').value = '';
+    document.body.className = '';
+    setTimeout(function () { try { $('pw').focus(); } catch (e) {} }, 50);
+  }
+  function showApp() {
+    $('login').style.display = 'none';
+    $('app').style.display = 'block';
+    $('tools').style.display = '';
+  }
+
+  /* ---------- загрузка списка ---------- */
+  // userAttempt: true - пользователь ввёл пароль сам
+  function load(userAttempt) {
+    api('list', {}, function (st, text) {
+      if (st === 403) {
+        delCookie();
+        showLogin(userAttempt ? 'Неверный пароль' : '');
+        return;
+      }
+      var d = null;
+      if (st === 200) { try { d = JSON.parse(text); } catch (e) { d = null; } }
+      if (!d) {
+        if (userAttempt || $('app').style.display === 'none') {
+          showLogin('Нет связи с устройством');
+        } else {
+          note('Нет связи с устройством');
+        }
+        return;
+      }
+      setCookie(pw);
+      showApp();
+      apply(d);
+    });
+  }
+
+  function apply(d) {
+    var total = mb(d.total_bytes), free = mb(d.free_bytes);
+    $('storText').textContent = 'Всего: ' + spaced(total) + ' МБ · Свободно: ' + spaced(free) + ' МБ';
+    var used = total > 0 ? Math.max(0, Math.min(100, (total - free) * 100 / total)) : 0;
+    $('fill').style.width = used + '%';
+
+    files = d.files || [];
+    files.sort(function (a, b) {
+      if (a.time !== b.time) return a.time < b.time ? 1 : -1;
+      return a.name < b.name ? 1 : (a.name > b.name ? -1 : 0);
+    });
+    var sum = 0, i;
+    for (i = 0; i < files.length; i++) sum += files[i].size;
+    $('cnt').textContent = 'Фото: ' + files.length + ' (' + spaced(mb(sum)) + ' МБ)';
+
+    // убираем из выбора исчезнувшие файлы
+    var exist = {};
+    for (i = 0; i < files.length; i++) exist[files[i].name] = true;
+    for (var k in sel) {
+      if (sel.hasOwnProperty(k) && !exist[k]) delete sel[k];
+    }
+    buildGrid();
+    updateSel();
+  }
+
+  /* ---------- сетка превью ---------- */
+  function buildGrid() {
+    $('grid').innerHTML = '';
+    thumbs = {};
+    shown = 0;
+    $('empty').style.display = files.length ? 'none' : 'block';
+    showMore();
+  }
+
+  function showMore() {
+    var end = Math.min(shown + PAGE, files.length);
+    for (var i = shown; i < end; i++) addThumb(i);
+    shown = end;
+    var more = $('more');
+    if (shown < files.length) {
+      more.style.display = 'inline-block';
+      more.textContent = 'Показать ещё (' + (files.length - shown) + ')';
+    } else {
+      more.style.display = 'none';
+    }
+  }
+
+  function addThumb(i) {
+    var f = files[i];
+    var d = document.createElement('div');
+    d.className = 'thumb' + (sel[f.name] ? ' sel' : '');
+    d.style.backgroundImage = 'url("' + photoUrl(f.name) + '")';
+    var chk = document.createElement('div');
+    chk.className = 'chk';
+    var cap = document.createElement('div');
+    cap.className = 'cap';
+    cap.textContent = f.time.substr(5);          // ММ-ДД чч:мм:сс
+    d.appendChild(chk);
+    d.appendChild(cap);
+    d.onclick = function () { openViewer(indexOf(f.name)); };
+    chk.onclick = function (e) {
+      toggle(f.name);
+      if (e && e.stopPropagation) e.stopPropagation(); else window.event.cancelBubble = true;
+    };
+    thumbs[f.name] = d;
+    $('grid').appendChild(d);
+  }
+
+  function indexOf(name) {
+    for (var i = 0; i < files.length; i++) if (files[i].name === name) return i;
+    return -1;
+  }
+
+  /* ---------- выбор ---------- */
+  function selCount() {
+    var n = 0;
+    for (var k in sel) if (sel.hasOwnProperty(k)) n++;
+    return n;
+  }
+  function paint(name) {
+    var t = thumbs[name];
+    if (t) t.className = 'thumb' + (sel[name] ? ' sel' : '');
+  }
+  function toggle(name) {
+    if (sel[name]) delete sel[name]; else sel[name] = true;
+    paint(name);
+    updateSel();
+  }
+  function updateSel() {
+    var n = selCount();
+    $('selN').textContent = 'Выбрано: ' + n;
+    document.body.className = n ? 'selecting' : '';
+  }
+  function selectAll() {
+    for (var i = 0; i < files.length; i++) { sel[files[i].name] = true; paint(files[i].name); }
+    updateSel();
+  }
+  function clearSel() {
+    var old = sel;
+    sel = {};
+    for (var k in old) if (old.hasOwnProperty(k)) paint(k);
+    updateSel();
+  }
+
+  /* ---------- удаление ---------- */
+  function deleteSelected() {
+    if (busy) return;
+    var list = [];
+    for (var k in sel) if (sel.hasOwnProperty(k)) list.push(k);
+    if (!list.length) return;
+    if (!confirm('Удалить фото: ' + list.length + ' шт.?')) return;
+    busy = true;
+    var failed = 0;
+    (function next(i) {
+      if (i >= list.length) {
+        busy = false;
+        sel = {};
+        updateSel();
+        note(failed ? 'Не удалось удалить: ' + failed : '');
+        load(false);
+        return;
+      }
+      note('Удаление ' + (i + 1) + ' из ' + list.length + '…', true);
+      api('delete', { name: list[i] }, function (st) {
+        if (st !== 200 && st !== 404) failed++;
+        next(i + 1);
+      });
+    })(0);
+  }
+
+  /* ---------- просмотр ---------- */
+  function openViewer(i) {
+    if (i < 0 || i >= files.length) return;
+    cur = i;
+    var f = files[i];
+    $('lbImg').src = photoUrl(f.name);
+    $('lbCap').textContent = f.name + ' · ' + mb1(f.size) + ' МБ · ' + f.time + '  (' + (i + 1) + ' из ' + files.length + ')';
+    $('lb').className = 'open';
+  }
+  function closeViewer() {
+    $('lb').className = '';
+    $('lbImg').src = '';
+    cur = -1;
+  }
+  function step(d) {
+    if (cur < 0) return;
+    var n = cur + d;
+    if (n >= 0 && n < files.length) openViewer(n);
+  }
+
+  /* ---------- события ---------- */
+  $('loginForm').onsubmit = function () {
+    pw = $('pw').value;
+    load(true);
+    return false;
+  };
+  $('bRefresh').onclick = function () { note(''); load(false); };
+  $('bLogout').onclick = function () {
+    delCookie();
+    pw = '';
+    files = [];
+    sel = {};
+    showLogin('');
+  };
+  $('bAll').onclick = selectAll;
+  $('bCancel').onclick = clearSel;
+  $('bDel').onclick = deleteSelected;
+  $('more').onclick = showMore;
+  $('lbClose').onclick = closeViewer;
+  $('lbPrev').onclick = function (e) { step(-1); };
+  $('lbNext').onclick = function (e) { step(1); };
+  $('lb').onclick = function (e) {
+    var t = e ? (e.target || e.srcElement) : null;
+    if (t === $('lb')) closeViewer();
+  };
+  document.onkeydown = function (e) {
+    e = e || window.event;
+    if (cur < 0) return;
+    if (e.keyCode === 27) closeViewer();
+    else if (e.keyCode === 37) step(-1);
+    else if (e.keyCode === 39) step(1);
+  };
+
+  /* ---------- старт ---------- */
+  var saved = getCookie();
+  pw = saved === null ? '' : saved;   // пустой пароль подходит, если на устройстве он не задан
+  load(false);
+})();
+</script>
+</body>
+</html>
