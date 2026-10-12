@@ -161,6 +161,15 @@ public class CamService extends Service implements Camera.PreviewCallback {
                 }
 
                 @Override
+                public int onDelete(String name) {
+                    File f = findPhoto(name);
+                    if (f == null) return 1;
+                    boolean ok = f.delete();
+                    if (ok) scanDeleted(new String[]{f.getAbsolutePath()});
+                    return ok ? 0 : 2;
+                }
+
+                @Override
                 public File onIndex() {
                     return new File(photoDir(), "index.html");
                 }
@@ -476,6 +485,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
                 ch.postDelayed(shotRunnable, delay);
             } else {
                 finishSeries();
+                cleanupOld();
             }
         }
     };
@@ -488,6 +498,28 @@ public class CamService extends Service implements Camera.PreviewCallback {
 
     public static File photoDir() {
         return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "fCam");
+    }
+
+    /** Сообщает медиа-базе об удалённых файлах, чтобы они пропали из галереи. */
+    private void scanDeleted(String[] paths) {
+        try {
+            MediaScannerConnection.scanFile(this, paths, null, null);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Удаляет фото старше cfg.keepDays суток (0 - не удалять). */
+    private void cleanupOld() {
+        if (cfg.keepDays <= 0) return;
+        try {
+            long limit = System.currentTimeMillis() - cfg.keepDays * 86400000L;
+            java.util.ArrayList<String> gone = new java.util.ArrayList<String>();
+            for (File f : photos()) {
+                if (f.lastModified() < limit && f.delete()) gone.add(f.getAbsolutePath());
+            }
+            if (!gone.isEmpty()) scanDeleted(gone.toArray(new String[gone.size()]));
+        } catch (Exception ignored) {
+        }
     }
 
     private boolean save(String name, byte[] data) {

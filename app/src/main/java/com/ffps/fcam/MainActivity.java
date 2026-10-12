@@ -23,7 +23,7 @@ import java.util.Enumeration;
 
 public class MainActivity extends Activity {
 
-    private EditText eThr, eGap, eCnt, eInt, ePort, ePass;
+    private EditText eThr, eGap, eCnt, eInt, eKeep, ePort, ePass;
     private CheckBox cbAuto;
     private Spinner spCam;
     private TextView tvStatus, tvHint, tvVer;
@@ -46,6 +46,7 @@ public class MainActivity extends Activity {
         eGap = (EditText) findViewById(R.id.eGap);
         eCnt = (EditText) findViewById(R.id.eCnt);
         eInt = (EditText) findViewById(R.id.eInt);
+        eKeep = (EditText) findViewById(R.id.eKeep);
         ePort = (EditText) findViewById(R.id.ePort);
         ePass = (EditText) findViewById(R.id.ePass);
         cbAuto = (CheckBox) findViewById(R.id.cbAuto);
@@ -90,6 +91,7 @@ public class MainActivity extends Activity {
         eGap.setText(String.valueOf(p.minGap));
         eCnt.setText(String.valueOf(p.count));
         eInt.setText(fmt(p.interval));
+        eKeep.setText(String.valueOf(p.keepDays));
         ePort.setText(String.valueOf(p.port));
         ePass.setText(p.password);
         tvHint.setText("Фото сохраняются в DCIM/fCam/");
@@ -148,6 +150,7 @@ public class MainActivity extends Activity {
         eGap.setEnabled(e);
         eCnt.setEnabled(e);
         eInt.setEnabled(e);
+        eKeep.setEnabled(e);
         ePort.setEnabled(e);
         ePass.setEnabled(e);
         btn.setText(on ? "STOP SERVICE" : "START SERVICE");
@@ -179,13 +182,14 @@ public class MainActivity extends Activity {
             p.minGap = Integer.parseInt(eGap.getText().toString().trim());
             p.count = Integer.parseInt(eCnt.getText().toString().trim());
             p.interval = Float.parseFloat(eInt.getText().toString().trim().replace(',', '.'));
+            p.keepDays = Integer.parseInt(eKeep.getText().toString().trim());
             p.port = Integer.parseInt(ePort.getText().toString().trim());
             p.password = ePass.getText().toString();
         } catch (NumberFormatException ex) {
             Toast.makeText(this, "Проверьте числовые поля", Toast.LENGTH_LONG).show();
             return;
         }
-        if (p.threshold <= 0 || p.minGap < 0 || p.count < 1 || p.interval < 0 || p.port < 1 || p.port > 65535) {
+        if (p.threshold <= 0 || p.minGap < 0 || p.count < 1 || p.interval < 0 || p.keepDays < 0 || p.port < 1 || p.port > 65535) {
             Toast.makeText(this, "Некорректное значение в настройках", Toast.LENGTH_LONG).show();
             return;
         }

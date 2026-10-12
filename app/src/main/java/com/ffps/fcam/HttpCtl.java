@@ -14,6 +14,7 @@ import java.net.URLDecoder;
 /**
  * Минимальный HTTP-сервер (все запросы GET, параметр password):
  * /api/shot, /api/list (JSON), /api/photo?name=файл.jpg (без имени или с неверным именем - 404),
+ * /api/delete?name=файл.jpg (удаляет фото),
  * "/" - отдаёт DCIM/fCam/index.html (без пароля, если файл есть).
  */
 public class HttpCtl extends Thread {
@@ -27,6 +28,9 @@ public class HttpCtl extends Thread {
 
         /** Файл фото по имени; null, если имени нет, файла нет или имя недопустимо. */
         File onPhoto(String name);
+
+        /** Удаление фото по имени: 0 - удалено, 1 - нет такого файла, 2 - не удалось удалить. */
+        int onDelete(String name);
 
         /** Файл index.html для "/" или null, если его нет. */
         File onIndex();
@@ -147,7 +151,8 @@ public class HttpCtl extends Thread {
         boolean shot = "/api/shot".equals(path);
         boolean list = "/api/list".equals(path);
         boolean photo = "/api/photo".equals(path);
-        if (!shot && !list && !photo) {
+        boolean delete = "/api/delete".equals(path);
+        if (!shot && !list && !photo && !delete) {
             reply(s, 404, "Not Found");
             return;
         }
@@ -167,6 +172,13 @@ public class HttpCtl extends Thread {
                 return;
             }
             replyBody(s, 200, "OK", body, "application/json; charset=utf-8");
+            return;
+        }
+        if (delete) {
+            int r = cb.onDelete(param(query, "name"));
+            if (r == 0) reply(s, 200, "OK");
+            else if (r == 1) reply(s, 404, "Not Found");
+            else reply(s, 500, "Delete failed");
             return;
         }
         if (photo) {

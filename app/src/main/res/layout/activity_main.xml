@@ -85,6 +85,18 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="8dp"
+            android:text="Хранить фото, дней (0 — не удалять)" />
+
+        <EditText
+            android:id="@+id/eKeep"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
             android:text="Порт управления" />
 
         <EditText

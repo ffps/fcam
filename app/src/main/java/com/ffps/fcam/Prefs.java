@@ -11,6 +11,7 @@ public class Prefs {
     public int minGap = 60;        // сек между началами серий
     public int count = 3;          // кадров в серии
     public float interval = 1f;    // сек между кадрами
+    public int keepDays = 0;       // хранить фото, дней (0 - не удалять)
     public int port = 8081;
     public String password = "";
 
@@ -28,6 +29,7 @@ public class Prefs {
         p.minGap = s.getInt("minGap", p.minGap);
         p.count = s.getInt("count", p.count);
         p.interval = s.getFloat("interval", p.interval);
+        p.keepDays = s.getInt("keepDays", p.keepDays);
         p.port = s.getInt("port", p.port);
         p.password = s.getString("password", p.password);
         return p;
@@ -42,6 +44,7 @@ public class Prefs {
                 .putInt("minGap", minGap)
                 .putInt("count", count)
                 .putFloat("interval", interval)
+                .putInt("keepDays", keepDays)
                 .putInt("port", port)
                 .putString("password", password)
                 .commit();
