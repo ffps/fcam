@@ -29,6 +29,8 @@ public class MainActivity extends Activity {
     private TextView tvStatus, tvHint, tvVer;
     private Button btn;
     private final Handler h = new Handler();
+    private Boolean lastOn = null;      // last applied state of the controls
+    private String lastStatus = "";
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -143,17 +145,22 @@ public class MainActivity extends Activity {
     private void refresh() {
         Prefs p = Prefs.load(this);
         boolean on = p.enabled;
-        boolean e = !on;
-        cbAuto.setEnabled(e);
-        spCam.setEnabled(e);
-        eThr.setEnabled(e);
-        eGap.setEnabled(e);
-        eCnt.setEnabled(e);
-        eInt.setEnabled(e);
-        eKeep.setEnabled(e);
-        ePort.setEnabled(e);
-        ePass.setEnabled(e);
-        btn.setText(on ? "STOP SERVICE" : "START SERVICE");
+        // touch the controls only when the state changes: any setText/setEnabled can relayout
+        // the ScrollView and make it jump to the focused view on old Android versions
+        if (lastOn == null || lastOn != on) {
+            lastOn = on;
+            boolean e = !on;
+            cbAuto.setEnabled(e);
+            spCam.setEnabled(e);
+            eThr.setEnabled(e);
+            eGap.setEnabled(e);
+            eCnt.setEnabled(e);
+            eInt.setEnabled(e);
+            eKeep.setEnabled(e);
+            ePort.setEnabled(e);
+            ePass.setEnabled(e);
+            btn.setText(on ? "STOP SERVICE" : "START SERVICE");
+        }
 
         StringBuilder sb = new StringBuilder();
         if (on && CamService.running) {
@@ -170,7 +177,11 @@ public class MainActivity extends Activity {
             sb.append("Состояние: остановлено");
         }
         if (CamService.lastError != null) sb.append("\nОшибка: ").append(CamService.lastError);
-        tvStatus.setText(sb.toString());
+        String text = sb.toString();
+        if (!text.equals(lastStatus)) {
+            lastStatus = text;
+            tvStatus.setText(text);
+        }
     }
 
     private void startService() {
