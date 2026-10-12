@@ -20,6 +20,8 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.StatFs;
+import android.view.OrientationEventListener;
+import android.view.WindowManager;
 import android.os.PowerManager;
 
 import java.io.File;
@@ -65,6 +67,10 @@ public class CamService extends Service implements Camera.PreviewCallback {
     private PowerManager.WakeLock wl;
     private WifiManager.WifiLock wifiLock;
     private NotificationManager nm;
+    private OrientationEventListener orient;
+    private volatile int lastOrientation = -1;   // градусы по часовой от естественного положения, -1 - неизвестно
+    private Camera.CameraInfo camInfo;
+    private int appliedRot = -1;
 
     private volatile boolean camReady = false;
     private volatile boolean shooting = false;
@@ -91,6 +97,13 @@ public class CamService extends Service implements Camera.PreviewCallback {
         super.onCreate();
         nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         createChannels();
+        orient = new OrientationEventListener(this) {
+            @Override
+            public void onOrientationChanged(int o) {
+                if (o != ORIENTATION_UNKNOWN) lastOrientation = o;
+            }
+        };
+        if (orient.canDetectOrientation()) orient.enable();
     }
 
     @Override
@@ -172,6 +185,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
     public void onDestroy() {
         running = false;
         camOk = false;
+        if (orient != null) orient.disable();
         if (http != null) http.shutdown();
         if (ch != null) {
             ch.removeCallbacksAndMessages(null);
@@ -250,6 +264,9 @@ public class CamService extends Service implements Camera.PreviewCallback {
             int n = Camera.getNumberOfCameras();
             int idx = cfg.camera < n ? cfg.camera : 0;
             cam = Camera.open(idx);
+            camInfo = new Camera.CameraInfo();
+            Camera.getCameraInfo(idx, camInfo);
+            appliedRot = -1;
             Camera.Parameters p = cam.getParameters();
 
             Camera.Size best = null;
@@ -393,7 +410,34 @@ public class CamService extends Service implements Camera.PreviewCallback {
         tag = t;
         shotIdx = 0;
         stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+        applyRotation();
         shoot();
+    }
+
+    /** Угол поворота JPEG (камера записывает его в EXIF или поворачивает сама) по ориентации устройства. */
+    private int jpegRotation() {
+        if (camInfo == null) return 0;
+        int o = lastOrientation;
+        if (o < 0) {      // датчика нет или положение неизвестно - берём поворот экрана
+            int rot = ((WindowManager) getSystemService(WINDOW_SERVICE)).getDefaultDisplay().getRotation();
+            o = (360 - rot * 90) % 360;
+        }
+        o = ((o + 45) / 90 * 90) % 360;
+        if (camInfo.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) return (camInfo.orientation - o + 360) % 360;
+        return (camInfo.orientation + o) % 360;
+    }
+
+    private void applyRotation() {
+        try {
+            int r = jpegRotation();
+            if (r != appliedRot) {
+                Camera.Parameters p = cam.getParameters();
+                p.setRotation(r);
+                cam.setParameters(p);
+                appliedRot = r;
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private final Runnable shotRunnable = new Runnable() {
