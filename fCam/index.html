@@ -30,8 +30,15 @@ body.selecting .bar.sel{display:flex}
 .ibtn{width:40px;height:40px;padding:0;margin-left:2px;border:0;border-radius:50%;background:none;color:#fff;cursor:pointer;
  display:flex;align-items:center;justify-content:center}
 .ibtn:hover{background:rgba(255,255,255,.18)}
+.ibtn:disabled{opacity:.5;cursor:default;background:none}
 .ibtn svg{width:24px;height:24px;fill:currentColor}
 .ibtn svg.line{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* status message in the middle of the app bar */
+#hdrMsg{position:fixed;top:0;left:50%;transform:translateX(-50%);height:56px;z-index:11;display:flex;align-items:center;
+ max-width:calc(100vw - 260px);pointer-events:none;color:#fff;font-size:14px;font-weight:500}
+#hdrMsg .pill{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:5px 14px;border-radius:16px;background:rgba(255,255,255,.25)}
+#hdrMsg .pill.err{background:var(--danger)}
 
 /* content */
 #app,#login{padding-top:72px}
@@ -40,8 +47,6 @@ body.selecting .bar.sel{display:flex}
 .muted{color:var(--muted)}
 .track{height:6px;background:#ffe0b2;border-radius:3px;margin-top:10px;overflow:hidden}
 .fill{height:100%;width:0;background:var(--primary)}
-#note{display:none;color:var(--danger)}
-#note.info{color:var(--text)}
 
 /* thumbnails */
 #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
@@ -119,6 +124,9 @@ select.field{background:#fff}
   </a>
   <div class="grow">fCam</div>
   <span class="row" id="tools" style="display:none">
+    <button class="ibtn" id="bShot" title="Сделать снимок" aria-label="Сделать снимок">
+      <svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M10.382 2a1 1 0 0 1 .894.553L12 4h2a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h2l.724-1.447A1 1 0 0 1 5.618 2zM8 6a3 3 0 1 0 0 6a3 3 0 0 0 0-6m5-1a1 1 0 1 0 0 2a1 1 0 0 0 0-2"/></svg>
+    </button>
     <button class="ibtn" id="bCfg" title="Настройки" aria-label="Настройки">
       <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.39 10.23 L22.15 11.04 L22.15 12.96 L19.39 13.77 L18.48 15.97 L19.86 18.50 L18.50 19.86 L15.97 18.48 L13.77 19.39 L12.96 22.15 L11.04 22.15 L10.23 19.39 L8.03 18.48 L5.50 19.86 L4.14 18.50 L5.52 15.97 L4.61 13.77 L1.85 12.96 L1.85 11.04 L4.61 10.23 L5.52 8.03 L4.14 5.50 L5.50 4.14 L8.03 5.52 L10.23 4.61 L11.04 1.85 L12.96 1.85 L13.77 4.61 L15.97 5.52 L18.50 4.14 L19.86 5.50 L18.48 8.03Z M15.40 12 A3.4 3.4 0 1 0 8.60 12 A3.4 3.4 0 1 0 15.40 12Z"/></svg>
     </button>
@@ -136,6 +144,8 @@ select.field{background:#fff}
   <button class="btn" id="bDel">Удалить</button>
   <button class="btn" id="bCancel">Отмена</button>
 </header>
+
+<div id="hdrMsg"></div>
 
 <div id="login">
   <div class="wrap">
@@ -155,7 +165,6 @@ select.field{background:#fff}
       <div class="track"><div class="fill" id="fill"></div></div>
       <div class="muted" id="cnt" style="margin-top:8px"></div>
     </div>
-    <div class="card" id="note"></div>
     <div id="grid"></div>
     <div class="card muted" id="empty">Фото нет</div>
     <div style="text-align:center"><button class="btn raised" id="more">Показать ещё</button></div>
@@ -246,12 +255,17 @@ select.field{background:#fff}
   const noSec = t => t.substring(0, 16);            // drop the seconds
   const spaced = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
 
+  // show a short status message in the middle of the app bar (it does not move the page content)
   function note(text, info) {
-    const n = $('note');
-    if (!text) { n.style.display = 'none'; return; }
-    n.className = 'card' + (info ? ' info' : '');
-    n.textContent = text;
-    n.style.display = 'block';
+    const m = $('hdrMsg');
+    m.textContent = '';
+    m.title = '';
+    if (!text) return;
+    const span = document.createElement('span');
+    span.className = 'pill' + (info ? '' : ' err');
+    span.textContent = text;
+    m.title = text;
+    m.appendChild(span);
   }
 
   /* ---------- screens ---------- */
@@ -392,6 +406,35 @@ select.field{background:#fff}
     load();
   }
 
+  /* ---------- manual shot ---------- */
+  async function shootNow() {
+    if (busy) return;
+    busy = true;
+    const btn = $('bShot');
+    btn.disabled = true;
+    note('Съёмка…', true);
+    try {
+      const r = await api('shot');
+      if (r.status === 409) { note('Серия уже идёт'); return; }
+      if (r.status === 503) { note('Камера недоступна'); return; }
+      if (!r.ok) { note('Ошибка ' + r.status); return; }
+      // wait until the whole series is taken: (count - 1) * interval + a small reserve
+      let wait = 5000;
+      try {
+        const c = await (await api('config')).json();
+        wait = Math.max(0, c.count - 1) * Math.max(300, c.interval * 1000) + 3000;
+      } catch (e) { /* keep the default */ }
+      await new Promise(res => setTimeout(res, wait));
+      note('');
+      await load();
+    } catch (e) {
+      note('Нет связи с устройством');
+    } finally {
+      busy = false;
+      btn.disabled = false;
+    }
+  }
+
   /* ---------- viewer ---------- */
   function openViewer(i) {
     if (i < 0 || i >= files.length) return;
@@ -484,6 +527,7 @@ select.field{background:#fff}
   $('loginForm').onsubmit = e => { e.preventDefault(); pw = $('pw').value; load(true); };
   $('bRefresh').onclick = () => { note(''); load(); };
   $('bLogout').onclick = () => { delCookie(); pw = ''; files = []; sel.clear(); showLogin(''); };
+  $('bShot').onclick = shootNow;
   $('bCfg').onclick = openConfig;
   $('cfgCancel').onclick = () => $('cfg').close();
   $('cfgForm').onsubmit = saveConfig;
