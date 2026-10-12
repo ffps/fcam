@@ -516,19 +516,24 @@ public class CamService extends Service implements Camera.PreviewCallback {
         }
         SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
         StringBuilder sb = new StringBuilder();
-        sb.append("{\"total_bytes\":").append(total)
-                .append(",\"free_bytes\":").append(free)
-                .append(",\"files\":[");
-        boolean first = true;
-        for (File f : photos()) {
-            if (!first) sb.append(',');
-            first = false;
-            sb.append("{\"name\":").append(jq(f.getName()))
-                    .append(",\"size\":").append(f.length())
-                    .append(",\"time\":").append(jq(df.format(new Date(f.lastModified()))))
-                    .append('}');
+        sb.append("{\n");
+        sb.append("  \"total_bytes\": ").append(total).append(",\n");
+        sb.append("  \"free_bytes\": ").append(free).append(",\n");
+        java.util.ArrayList<File> ph = photos();
+        if (ph.isEmpty()) {
+            sb.append("  \"files\": []\n");
+        } else {
+            sb.append("  \"files\": [\n");
+            for (int i = 0; i < ph.size(); i++) {
+                File f = ph.get(i);
+                sb.append("    {\"name\": ").append(jq(f.getName()))
+                        .append(", \"size\": ").append(f.length())
+                        .append(", \"time\": ").append(jq(df.format(new Date(f.lastModified()))))
+                        .append('}').append(i < ph.size() - 1 ? ",\n" : "\n");
+            }
+            sb.append("  ]\n");
         }
-        sb.append("]}");
+        sb.append("}\n");
         return sb.toString();
     }
 }
