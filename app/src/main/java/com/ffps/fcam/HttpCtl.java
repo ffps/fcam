@@ -175,9 +175,9 @@ public class HttpCtl extends Thread {
             return;
         }
         if (delete) {
-            int r = cb.onDelete(param(query, "name"));
-            if (r == 0) reply(s, 200, "OK");
-            else if (r == 1) reply(s, 404, "Not Found");
+            int dr = cb.onDelete(param(query, "name"));
+            if (dr == 0) reply(s, 200, "OK");
+            else if (dr == 1) reply(s, 404, "Not Found");
             else reply(s, 500, "Delete failed");
             return;
         }
