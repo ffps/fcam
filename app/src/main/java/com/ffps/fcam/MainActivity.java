@@ -160,6 +160,7 @@ public class MainActivity extends Activity {
             ePort.setEnabled(e);
             ePass.setEnabled(e);
             btn.setText(on ? "STOP SERVICE" : "START SERVICE");
+            btn.setBackgroundResource(on ? R.drawable.btn_stop : R.drawable.btn_start);
         }
 
         StringBuilder sb = new StringBuilder();

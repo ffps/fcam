@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="btn_start">#FFA000</color>
+    <color name="btn_start_pressed">#E65100</color>
+    <color name="btn_stop">#D32F2F</color>
+    <color name="btn_stop_pressed">#8E0000</color>
+    <color name="btn_text">#FFFFFF</color>
+    <color name="btn_ripple">#55FFFFFF</color>
+</resources>

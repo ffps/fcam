@@ -123,9 +123,18 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:minWidth="200dp"
             android:layout_marginTop="16dp"
-            android:text="START SERVICE" />
+            android:background="@drawable/btn_start"
+            android:minWidth="220dp"
+            android:minHeight="48dp"
+            android:paddingBottom="12dp"
+            android:paddingLeft="32dp"
+            android:paddingRight="32dp"
+            android:paddingTop="12dp"
+            android:text="START SERVICE"
+            android:textColor="@color/btn_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvHint"
