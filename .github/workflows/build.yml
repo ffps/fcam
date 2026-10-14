@@ -40,9 +40,12 @@ jobs:
         run: gradle assembleRelease -PverName="${GITHUB_REF_NAME#v}" -PverCode="${{ github.run_number }}"
 
       - name: Rename
-        run: mv app/build/outputs/apk/release/app-release.apk "fCam-${GITHUB_REF_NAME}.apk"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mv app/build/outputs/apk/release/app-release.apk "fCam-$VERSION.apk"
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: fCam-${{ github.ref_name }}.apk
+          files: fCam-${{ env.VERSION }}.apk

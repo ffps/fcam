@@ -176,7 +176,7 @@ Android-приложение для старых и новых устройст�
 
 ## Сборка
 
-GitHub Actions собирает APK при пуше тега `v*` и прикладывает его к релизу (`fCam-vX.Y.apk`):
+GitHub Actions собирает APK при пуше тега `v*` и прикладывает его к релизу (`fCam-X.Y.apk`, без буквы `v`):
 
     git tag v1.0.1
     git push origin v1.0.1
