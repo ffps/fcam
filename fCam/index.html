@@ -32,7 +32,7 @@ body.selecting .bar.sel{display:flex}
  display:flex;align-items:center;justify-content:center}
 .ibtn:hover{background:rgba(255,255,255,.18)}
 .ibtn:disabled{opacity:.5;cursor:default;background:none}
-.ibtn.spin svg{animation:sp .8s linear infinite}
+.ibtn.rot svg{animation:sp .8s linear infinite}
 .ibtn svg{width:24px;height:24px;fill:currentColor}
 .ibtn svg.line{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
@@ -622,14 +622,14 @@ select.field{background:#fff}
     if (refreshing) return;
     refreshing = true;
     const btn = $('bRefresh');
-    btn.classList.add('spin');
+    btn.classList.add('rot');
     note('Обновление…', true);
     const t0 = Date.now();
     await load();
     // keep the feedback visible for a moment: a very fast refresh would look like nothing happened
     const left = 700 - (Date.now() - t0);
     if (left > 0) await new Promise(res => setTimeout(res, left));
-    btn.classList.remove('spin');
+    btn.classList.remove('rot');
     if (curNote === 'Обновление…') note('');       // do not hide an error shown by load()
     refreshing = false;
   };
