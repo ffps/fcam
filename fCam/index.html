@@ -13,7 +13,8 @@
 html,body{margin:0;padding:0}
 body{font-family:Roboto,"Segoe UI",system-ui,Arial,sans-serif;font-size:14px;background:var(--bg);color:var(--text)}
 .row{display:flex;align-items:center}
-.grow{flex:1}
+.grow{flex:1;min-width:0}
+#appTitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 button{font:inherit}
 
 /* app bar */
@@ -31,6 +32,7 @@ body.selecting .bar.sel{display:flex}
  display:flex;align-items:center;justify-content:center}
 .ibtn:hover{background:rgba(255,255,255,.18)}
 .ibtn:disabled{opacity:.5;cursor:default;background:none}
+.ibtn.spin svg{animation:sp .8s linear infinite}
 .ibtn svg{width:24px;height:24px;fill:currentColor}
 .ibtn svg.line{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
@@ -87,9 +89,9 @@ body.selecting .bar.sel{display:flex}
 #lbNext{right:8px;top:calc(50% - 24px)}
 
 /* config dialog */
-dialog#cfg{border:0;border-radius:4px;padding:0;width:min(440px,calc(100vw - 24px));max-height:calc(100vh - 24px);
+dialog.dlg{border:0;border-radius:4px;padding:0;width:min(440px,calc(100vw - 24px));max-height:calc(100vh - 24px);
  box-shadow:0 11px 15px -7px rgba(0,0,0,.2),0 24px 38px 3px rgba(0,0,0,.14);color:var(--text)}
-dialog#cfg::backdrop{background:rgba(0,0,0,.5)}
+dialog.dlg::backdrop{background:rgba(0,0,0,.5)}
 #cfgForm{padding:20px 24px 12px}
 #cfgForm h2{margin:0 0 12px;font-size:20px;font-weight:500}
 .fl{display:block;margin-top:14px;font-size:12px;color:var(--muted)}
@@ -102,6 +104,13 @@ select.field{background:#fff}
 .actions .raised{color:#fff}
 .actions .raised:hover{background:var(--primary-dark)}
 .hint{margin-top:10px;font-size:12px;color:var(--muted)}
+
+/* system info dialog */
+#infoBox{padding:20px 24px 12px}
+#infoBox h2{margin:0 0 8px;font-size:20px;font-weight:500}
+.irow{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid #eee}
+.irow .k{color:var(--muted);flex:none}
+.irow .v{text-align:right;word-break:break-word}
 
 /* waiting overlay */
 #wait{display:none;position:fixed;inset:0;background:rgba(255,255,255,.92);z-index:30;align-items:center;justify-content:center;
@@ -122,13 +131,16 @@ select.field{background:#fff}
       <circle cx="90" cy="60" r="16" fill="#ffa000"/>
     </svg>
   </a>
-  <div class="grow">fCam</div>
+  <div class="grow" id="appTitle">fCam</div>
   <span class="row" id="tools" style="display:none">
     <button class="ibtn" id="bShot" title="Сделать снимок" aria-label="Сделать снимок">
       <svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M10.382 2a1 1 0 0 1 .894.553L12 4h2a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h2l.724-1.447A1 1 0 0 1 5.618 2zM8 6a3 3 0 1 0 0 6a3 3 0 0 0 0-6m5-1a1 1 0 1 0 0 2a1 1 0 0 0 0-2"/></svg>
     </button>
     <button class="ibtn" id="bCfg" title="Настройки" aria-label="Настройки">
       <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.39 10.23 L22.15 11.04 L22.15 12.96 L19.39 13.77 L18.48 15.97 L19.86 18.50 L18.50 19.86 L15.97 18.48 L13.77 19.39 L12.96 22.15 L11.04 22.15 L10.23 19.39 L8.03 18.48 L5.50 19.86 L4.14 18.50 L5.52 15.97 L4.61 13.77 L1.85 12.96 L1.85 11.04 L4.61 10.23 L5.52 8.03 L4.14 5.50 L5.50 4.14 L8.03 5.52 L10.23 4.61 L11.04 1.85 L12.96 1.85 L13.77 4.61 L15.97 5.52 L18.50 4.14 L19.86 5.50 L18.48 8.03Z M15.40 12 A3.4 3.4 0 1 0 8.60 12 A3.4 3.4 0 1 0 15.40 12Z"/></svg>
+    </button>
+    <button class="ibtn" id="bInfo" title="Сведения" aria-label="Сведения">
+      <svg class="line" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6"/><path d="M12 7.6h.01"/></svg>
     </button>
     <button class="ibtn" id="bRefresh" title="Обновить" aria-label="Обновить">
       <svg viewBox="0 0 1024 1024"><path d="M771.8 794.9A384 384 0 0 1 128 512h64a320 320 0 0 0 555.7 216.4h-93a32 32 0 1 1 0-64h149a32 32 0 0 1 32 32v149a32 32 0 1 1-64 0zM276.3 295.6h93a32 32 0 0 1 0 64H220.2a32 32 0 0 1-32-32v-149a32 32 0 0 1 64 0V229a384 384 0 0 1 644 282.9h-64a320 320 0 0 0-555.8-216.4z"/></svg>
@@ -179,7 +191,7 @@ select.field{background:#fff}
   <button class="lbb" id="lbNext" aria-label="Вперёд">&#8250;</button>
 </div>
 
-<dialog id="cfg">
+<dialog id="cfg" class="dlg">
   <form id="cfgForm" method="dialog">
     <h2>Настройки</h2>
     <label class="chkrow"><input type="checkbox" id="c_autostart">Автозапуск при загрузке системы</label>
@@ -202,8 +214,8 @@ select.field{background:#fff}
     <label class="fl" for="c_keep_days">Хранить фото, дней (0 — не удалять)</label>
     <input class="field" id="c_keep_days" type="number" step="1" min="0" required>
 
-    <label class="fl" for="c_port">Порт управления</label>
-    <input class="field" id="c_port" type="number" step="1" min="1" max="65535" required>
+    <label class="fl" for="c_port">Порт управления (1024–65535)</label>
+    <input class="field" id="c_port" type="number" step="1" min="1024" max="65535" required>
 
     <label class="fl" for="c_password">Пароль управления (пусто — без авторизации)</label>
     <input class="field" id="c_password" type="password" autocomplete="new-password">
@@ -215,6 +227,15 @@ select.field{background:#fff}
       <button type="submit" class="btn raised">Сохранить</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="info" class="dlg">
+  <div id="infoBox">
+    <h2>Сведения</h2>
+    <div id="infoRows"></div>
+    <div class="err" id="infoErr"></div>
+    <div class="actions"><button type="button" class="btn" id="infoClose">Закрыть</button></div>
+  </div>
 </dialog>
 
 <div id="wait"><div class="spin"></div><div>Перезапуск сервиса…</div></div>
@@ -256,7 +277,9 @@ select.field{background:#fff}
   const spaced = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
 
   // show a short status message in the middle of the app bar (it does not move the page content)
+  let curNote = '';
   function note(text, info) {
+    curNote = text || '';
     const m = $('hdrMsg');
     m.textContent = '';
     m.title = '';
@@ -288,9 +311,9 @@ select.field{background:#fff}
 
   /* ---------- loading the list ---------- */
   async function load(userAttempt = false) {
-    let r;
+    let r, ri;
     try {
-      r = await api('list');
+      [r, ri] = await Promise.all([api('list'), api('info').catch(() => null)]);
     } catch (e) {
       return loggedIn ? note('Нет связи с устройством') : showLogin('Нет связи с устройством');
     }
@@ -302,15 +325,33 @@ select.field{background:#fff}
       return loggedIn ? note('Ошибка ' + r.status) : showLogin('Ошибка ' + r.status);
     }
     const d = await r.json();
+    let inf = null;
+    if (ri && ri.ok) {
+      try { inf = await ri.json(); } catch (e) { /* the system info is optional */ }
+    }
     setCookie(pw);
     showApp();
-    apply(d);
+    apply(d, inf);
   }
 
-  function apply(d) {
-    const total = mb(d.total_bytes), free = mb(d.free_bytes);
-    $('storText').textContent = `Всего: ${spaced(total)} МБ · Свободно: ${spaced(free)} МБ`;
-    $('fill').style.width = (total > 0 ? Math.max(0, Math.min(100, (total - free) * 100 / total)) : 0) + '%';
+  // "fCam - DeviceName" in the page header and in the browser tab title
+  function setDeviceName(inf) {
+    const name = inf && (inf.device_name || inf.model);
+    const t = name ? `fCam - ${name}` : 'fCam';
+    $('appTitle').textContent = t;
+    document.title = t;
+  }
+
+  function apply(d, inf) {
+    if (inf && inf.storage) {
+      const total = mb(inf.storage.total_bytes), free = mb(inf.storage.free_bytes);
+      $('storText').textContent = `Всего: ${spaced(total)} МБ · Свободно: ${spaced(free)} МБ`;
+      $('fill').style.width = (total > 0 ? Math.max(0, Math.min(100, (total - free) * 100 / total)) : 0) + '%';
+    } else {
+      $('storText').textContent = 'Нет данных о памяти';
+      $('fill').style.width = '0';
+    }
+    setDeviceName(inf);
 
     files = (d.files || []).slice().sort((a, b) =>
       a.time !== b.time ? (a.time < b.time ? 1 : -1) : (a.name < b.name ? 1 : -1));
@@ -455,6 +496,57 @@ select.field{background:#fff}
     if (n >= 0 && n < files.length) openViewer(n);
   }
 
+  /* ---------- system info ---------- */
+  const duration = sec => {
+    const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+    return (d ? d + ' д ' : '') + (d || h ? h + ' ч ' : '') + m + ' мин';
+  };
+  const PLUGGED = { ac: 'от сети', usb: 'по USB', wireless: 'беспроводная', none: 'от батареи' };
+
+  async function openInfo() {
+    let i;
+    try {
+      const r = await api('info');
+      if (!r.ok) throw new Error(r.status);
+      i = await r.json();
+    } catch (e) {
+      return note('Не удалось получить сведения');
+    }
+    const rows = [];
+    const dev = [i.manufacturer, i.model].filter(Boolean).join(' ');
+    rows.push(['Устройство', i.device_name && i.device_name !== i.model ? `${i.device_name} (${dev})` : dev]);
+    rows.push(['Android', `${i.android} (API ${i.sdk})`]);
+    rows.push(['Версия fCam', i.app_version]);
+    rows.push(['Время на устройстве', `${i.time} (${i.timezone})`]);
+    rows.push(['Работает с загрузки', duration(i.uptime_sec)]);
+    rows.push(['Сервис работает', duration(i.service_uptime_sec)]);
+    if (i.battery) {
+      const b = i.battery;
+      rows.push(['Батарея', `${b.percent}%, ${b.charging ? 'заряжается' : 'не заряжается'}, ${PLUGGED[b.plugged] || b.plugged}`]);
+      rows.push(['Температура батареи', `${b.temperature_c} °C`]);
+    }
+    rows.push(['IP-адрес', (i.ips && i.ips.length ? i.ips : [i.ip]).join(', ')]);
+    if (i.storage) rows.push(['Накопитель', `свободно ${spaced(mb(i.storage.free_bytes))} из ${spaced(mb(i.storage.total_bytes))} МБ`]);
+    if (i.ram) rows.push(['Память (ОЗУ)', `свободно ${spaced(mb(i.ram.free_bytes))} из ${spaced(mb(i.ram.total_bytes))} МБ`]);
+
+    const box = $('infoRows');
+    box.textContent = '';
+    for (const [k, v] of rows) {
+      const row = document.createElement('div');
+      row.className = 'irow';
+      const a = document.createElement('span');
+      a.className = 'k';
+      a.textContent = k;
+      const b = document.createElement('span');
+      b.className = 'v';
+      b.textContent = v;
+      row.append(a, b);
+      box.appendChild(row);
+    }
+    $('infoErr').textContent = '';
+    $('info').showModal();
+  }
+
   /* ---------- settings ---------- */
   const NUM = { threshold: parseFloat, min_gap: parseInt, count: parseInt, interval: parseFloat, keep_days: parseInt, port: parseInt };
 
@@ -525,10 +617,27 @@ select.field{background:#fff}
 
   /* ---------- events ---------- */
   $('loginForm').onsubmit = e => { e.preventDefault(); pw = $('pw').value; load(true); };
-  $('bRefresh').onclick = () => { note(''); load(); };
+  let refreshing = false;
+  $('bRefresh').onclick = async () => {
+    if (refreshing) return;
+    refreshing = true;
+    const btn = $('bRefresh');
+    btn.classList.add('spin');
+    note('Обновление…', true);
+    const t0 = Date.now();
+    await load();
+    // keep the feedback visible for a moment: a very fast refresh would look like nothing happened
+    const left = 700 - (Date.now() - t0);
+    if (left > 0) await new Promise(res => setTimeout(res, left));
+    btn.classList.remove('spin');
+    if (curNote === 'Обновление…') note('');       // do not hide an error shown by load()
+    refreshing = false;
+  };
   $('bLogout').onclick = () => { delCookie(); pw = ''; files = []; sel.clear(); showLogin(''); };
   $('bShot').onclick = shootNow;
   $('bCfg').onclick = openConfig;
+  $('bInfo').onclick = openInfo;
+  $('infoClose').onclick = () => $('info').close();
   $('cfgCancel').onclick = () => $('cfg').close();
   $('cfgForm').onsubmit = saveConfig;
   $('bAll').onclick = selectAll;

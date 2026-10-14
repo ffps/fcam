@@ -42,7 +42,7 @@ public class Prefs {
         if (count < 1) return "count должен быть не меньше 1";
         if (!(interval >= 0)) return "interval не может быть отрицательным";
         if (keepDays < 0) return "keep_days не может быть отрицательным";
-        if (port < 1 || port > 65535) return "port должен быть от 1 до 65535";
+        if (port < 1024 || port > 65535) return "port должен быть от 1024 до 65535";
         if (camera < 0) return "camera не может быть отрицательным";
         return null;
     }

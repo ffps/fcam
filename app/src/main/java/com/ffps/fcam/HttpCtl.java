@@ -14,7 +14,8 @@ import java.net.URLDecoder;
 /**
  * Минимальный HTTP-сервер. Параметр password - в строке запроса.
  * GET /api/shot, /api/list (JSON), /api/photo?name=, /api/thumb?name=, /api/delete?name=,
- * GET/POST /api/config (JSON), GET / - DCIM/fCam/index.html (без пароля).
+ * GET/POST /api/config (JSON), GET /api/info (JSON), GET /api и /api/ - список методов (без пароля),
+ * GET / - DCIM/fCam/index.html (без пароля).
  */
 public class HttpCtl extends Thread {
 
@@ -34,6 +35,9 @@ public class HttpCtl extends Thread {
         /** Удаление фото по имени: 0 - удалено, 1 - нет такого файла, 2 - не удалось удалить. */
         int onDelete(String name);
 
+        /** Сведения о системе в JSON. */
+        String onInfo();
+
         /** Текущие настройки в JSON. */
         String onConfigGet();
 
@@ -51,6 +55,20 @@ public class HttpCtl extends Thread {
 
     private static final String JSON = "application/json; charset=utf-8";
     private static final int MAX_BODY = 16384;
+
+    /** Список методов для /api (не требует пароля). */
+    private static final String API_INDEX = "{\n"
+            + "  \"GET /\": \"Страница DCIM/fCam/index.html, если она есть (без пароля)\",\n"
+            + "  \"GET /api\": \"Этот список методов (без пароля)\",\n"
+            + "  \"GET /api/shot\": \"Сделать серию кадров. Параметры: password\",\n"
+            + "  \"GET /api/list\": \"Список фото (JSON). Параметры: password\",\n"
+            + "  \"GET /api/photo\": \"Фото по имени (JPEG). Параметры: password, name\",\n"
+            + "  \"GET /api/thumb\": \"Миниатюра фото (JPEG). Параметры: password, name\",\n"
+            + "  \"GET /api/delete\": \"Удалить фото по имени. Параметры: password, name\",\n"
+            + "  \"GET /api/config\": \"Текущие настройки (JSON). Параметры: password\",\n"
+            + "  \"POST /api/config\": \"Изменить настройки: в теле JSON с нужными ключами, сервис перезапустится. Параметры: password\",\n"
+            + "  \"GET /api/info\": \"Сведения о системе (JSON): устройство, Android, аптайм, батарея, IP, память. Параметры: password\"\n"
+            + "}\n";
 
     private final int port;
     private final String password;
@@ -165,6 +183,10 @@ public class HttpCtl extends Thread {
             reply(s, 405, "Method Not Allowed");
             return;
         }
+        if ("/api".equals(path) || "/api/".equals(path)) {
+            replyBody(s, 200, "OK", API_INDEX, JSON);
+            return;
+        }
         if ("/".equals(path)) {
             File idx = cb.onIndex();
             if (idx == null || !idx.isFile()) {
@@ -180,7 +202,8 @@ public class HttpCtl extends Thread {
         boolean thumb = "/api/thumb".equals(path);
         boolean delete = "/api/delete".equals(path);
         boolean config = "/api/config".equals(path);
-        if (!shot && !list && !photo && !thumb && !delete && !config) {
+        boolean info = "/api/info".equals(path);
+        if (!shot && !list && !photo && !thumb && !delete && !config && !info) {
             reply(s, 404, "Not Found");
             return;
         }
@@ -216,6 +239,17 @@ public class HttpCtl extends Thread {
                 return;
             }
             replyBody(s, 200, "OK", cb.onConfigGet(), JSON);
+            return;
+        }
+        if (info) {
+            String body;
+            try {
+                body = cb.onInfo();
+            } catch (Exception e) {
+                reply(s, 500, "Error");
+                return;
+            }
+            replyBody(s, 200, "OK", body, JSON);
             return;
         }
         if (list) {

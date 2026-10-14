@@ -1,5 +1,6 @@
 package com.ffps.fcam;
 
+import android.app.ActivityManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -7,6 +8,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -17,6 +19,7 @@ import android.hardware.Camera;
 import android.net.wifi.WifiManager;
 import android.media.ExifInterface;
 import android.media.MediaScannerConnection;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
@@ -24,6 +27,8 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.StatFs;
+import android.os.SystemClock;
+import android.provider.Settings;
 import android.view.OrientationEventListener;
 import android.view.WindowManager;
 import android.os.PowerManager;
@@ -34,10 +39,15 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
+import java.util.TimeZone;
 
 public class CamService extends Service implements Camera.PreviewCallback {
 
@@ -74,6 +84,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
     private PowerManager.WakeLock wl;
     private WifiManager.WifiLock wifiLock;
     private NotificationManager nm;
+    private long serviceStart = 0;      // SystemClock.elapsedRealtime() на момент запуска сервиса
     private OrientationEventListener orient;
     private volatile int lastOrientation = -1;   // градусы по часовой от естественного положения, -1 - неизвестно
     private Camera.CameraInfo camInfo;
@@ -135,6 +146,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
         }
         running = true;
         if (ht == null) {
+            serviceStart = SystemClock.elapsedRealtime();
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "fcam:service");
             wl.acquire();
@@ -207,6 +219,11 @@ public class CamService extends Service implements Camera.PreviewCallback {
             @Override
             public File onThumb(String name) {
                 return makeThumb(name);
+            }
+
+            @Override
+            public String onInfo() {
+                return infoJson();
             }
 
             @Override
@@ -394,7 +411,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
             startPreview();
             camReady = true;
             camOk = true;
-            updateStatus("Работает, порт " + cfg.port);
+            if (lastError == null) updateStatus("Работает, порт " + cfg.port);
         } catch (Exception e) {
             camReady = false;
             camOk = false;
@@ -659,21 +676,9 @@ public class CamService extends Service implements Camera.PreviewCallback {
 
     /** Ответ на /api/list. */
     private String listJson() {
-        File dir = photoDir();
-        long total = 0, free = 0;
-        try {
-            File root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
-            StatFs st = new StatFs((dir.exists() ? dir : root).getAbsolutePath());
-            long bs = st.getBlockSize();
-            total = bs * st.getBlockCount();
-            free = bs * st.getAvailableBlocks();
-        } catch (Exception ignored) {
-        }
         SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
-        sb.append("  \"total_bytes\": ").append(total).append(",\n");
-        sb.append("  \"free_bytes\": ").append(free).append(",\n");
         java.util.ArrayList<File> ph = photos();
         if (ph.isEmpty()) {
             sb.append("  \"files\": []\n");
@@ -852,5 +857,128 @@ public class CamService extends Service implements Camera.PreviewCallback {
         p.enabled = true;
         p.save(this);
         return null;
+    }
+
+    // ---------- сведения о системе (/api/info) ----------
+
+    /** {всего, свободно} в байтах для раздела, где лежит DCIM. */
+    private long[] storage() {
+        long total = 0, free = 0;
+        try {
+            File dir = photoDir();
+            File root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
+            StatFs st = new StatFs((dir.exists() ? dir : root).getAbsolutePath());
+            long bs = st.getBlockSize();
+            total = bs * st.getBlockCount();
+            free = bs * st.getAvailableBlocks();
+        } catch (Exception ignored) {
+        }
+        return new long[]{total, free};
+    }
+
+    /**
+     * Имя устройства: заданное пользователем (Settings.Global device_name, на старых Android -
+     * bluetooth_name), а если его нет - модель.
+     */
+    private String deviceName() {
+        String n = null;
+        try {
+            n = Settings.Global.getString(getContentResolver(), "device_name");
+        } catch (Exception ignored) {
+        }
+        if (n == null || n.trim().length() == 0) {
+            try {
+                n = Settings.Secure.getString(getContentResolver(), "bluetooth_name");
+            } catch (Exception ignored) {
+            }
+        }
+        if (n == null || n.trim().length() == 0) n = Build.MODEL;
+        return n == null ? "" : n.trim();
+    }
+
+    /** IPv4-адреса устройства, локальные (192.168.x.x и т.п.) первыми. */
+    private static java.util.ArrayList<String> localIps() {
+        java.util.ArrayList<String> site = new java.util.ArrayList<String>();
+        java.util.ArrayList<String> other = new java.util.ArrayList<String>();
+        try {
+            for (Enumeration<NetworkInterface> e = NetworkInterface.getNetworkInterfaces(); e.hasMoreElements(); ) {
+                NetworkInterface ni = e.nextElement();
+                for (Enumeration<InetAddress> a = ni.getInetAddresses(); a.hasMoreElements(); ) {
+                    InetAddress ad = a.nextElement();
+                    if (ad.isLoopbackAddress() || !(ad instanceof Inet4Address)) continue;
+                    if (ad.isSiteLocalAddress()) site.add(ad.getHostAddress());
+                    else other.add(ad.getHostAddress());
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        site.addAll(other);
+        return site;
+    }
+
+    private String batteryJson() {
+        try {
+            Intent b = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if (b == null) return "null";
+            int level = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+            int scale = b.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+            int pct = (level >= 0 && scale > 0) ? level * 100 / scale : -1;
+            int status = b.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+            boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING
+                    || status == BatteryManager.BATTERY_STATUS_FULL;
+            int plugged = b.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
+            String pl = plugged == BatteryManager.BATTERY_PLUGGED_AC ? "ac"
+                    : plugged == BatteryManager.BATTERY_PLUGGED_USB ? "usb"
+                    : plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ? "wireless" : "none";
+            double temp = b.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) / 10.0;
+            return "{\"percent\": " + pct + ", \"charging\": " + charging + ", \"plugged\": \"" + pl
+                    + "\", \"temperature_c\": " + temp + "}";
+        } catch (Exception e) {
+            return "null";
+        }
+    }
+
+    private String infoJson() {
+        String ver = "";
+        try {
+            ver = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception ignored) {
+        }
+        long ramTotal = 0, ramFree = 0;
+        try {
+            ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+            am.getMemoryInfo(mi);
+            ramTotal = mi.totalMem;
+            ramFree = mi.availMem;
+        } catch (Exception ignored) {
+        }
+        long[] st = storage();
+        java.util.ArrayList<String> ips = localIps();
+        long now = SystemClock.elapsedRealtime();
+
+        StringBuilder sb = new StringBuilder("{\n");
+        sb.append("  \"device_name\": ").append(jq(deviceName())).append(",\n");
+        sb.append("  \"manufacturer\": ").append(jq(String.valueOf(Build.MANUFACTURER))).append(",\n");
+        sb.append("  \"model\": ").append(jq(String.valueOf(Build.MODEL))).append(",\n");
+        sb.append("  \"android\": ").append(jq(String.valueOf(Build.VERSION.RELEASE))).append(",\n");
+        sb.append("  \"sdk\": ").append(Build.VERSION.SDK_INT).append(",\n");
+        sb.append("  \"app_version\": ").append(jq(ver == null ? "" : ver)).append(",\n");
+        sb.append("  \"time\": ").append(jq(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date()))).append(",\n");
+        sb.append("  \"timezone\": ").append(jq(TimeZone.getDefault().getID())).append(",\n");
+        sb.append("  \"uptime_sec\": ").append(now / 1000).append(",\n");
+        sb.append("  \"service_uptime_sec\": ").append(serviceStart > 0 ? (now - serviceStart) / 1000 : 0).append(",\n");
+        sb.append("  \"battery\": ").append(batteryJson()).append(",\n");
+        sb.append("  \"ip\": ").append(jq(ips.isEmpty() ? "" : ips.get(0))).append(",\n");
+        sb.append("  \"ips\": [");
+        for (int i = 0; i < ips.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(jq(ips.get(i)));
+        }
+        sb.append("],\n");
+        sb.append("  \"storage\": {\"total_bytes\": ").append(st[0]).append(", \"free_bytes\": ").append(st[1]).append("},\n");
+        sb.append("  \"ram\": {\"total_bytes\": ").append(ramTotal).append(", \"free_bytes\": ").append(ramFree).append("}\n");
+        sb.append("}\n");
+        return sb.toString();
     }
 }

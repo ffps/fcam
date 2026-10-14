@@ -167,11 +167,7 @@ public class MainActivity extends Activity {
         if (on && CamService.running) {
             sb.append("Состояние: работает");
             if (!CamService.camOk) sb.append(" (камера недоступна)");
-            String base = "http://" + localIp() + ":" + p.port;
-            String pw = p.password.length() > 0 ? "password=" + p.password : "";
-            sb.append('\n').append(base).append("/api/shot").append(pw.length() > 0 ? "?" + pw : "");
-            sb.append('\n').append(base).append("/api/list").append(pw.length() > 0 ? "?" + pw : "");
-            sb.append('\n').append(base).append("/api/photo?").append(pw.length() > 0 ? pw + "&" : "").append("name=файл.jpg");
+            sb.append('\n').append("http://").append(localIp()).append(':').append(p.port).append("/api");
         } else if (on) {
             sb.append("Состояние: запускается или не запустилось");
         } else {
@@ -199,6 +195,10 @@ public class MainActivity extends Activity {
             p.password = ePass.getText().toString();
         } catch (NumberFormatException ex) {
             Toast.makeText(this, "Проверьте числовые поля", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (p.port < 1024 || p.port > 65535) {
+            Toast.makeText(this, "Порт должен быть от 1024 до 65535", Toast.LENGTH_LONG).show();
             return;
         }
         if (p.threshold <= 0 || p.minGap < 0 || p.count < 1 || p.interval < 0 || p.keepDays < 0 || p.port < 1 || p.port > 65535) {
