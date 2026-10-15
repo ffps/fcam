@@ -104,6 +104,8 @@ select.field{background:#fff}
 .actions .raised{color:#fff}
 .actions .raised:hover{background:var(--primary-dark)}
 .hint{margin-top:10px;font-size:12px;color:var(--muted)}
+.actions .btn.danger{color:var(--danger);margin-right:auto}
+.actions .btn.danger:hover{background:rgba(183,28,28,.1)}
 
 /* system info dialog */
 #infoBox{padding:20px 24px 12px}
@@ -214,6 +216,10 @@ select.field{background:#fff}
     <label class="fl" for="c_keep_days">Хранить фото, дней (0 — не удалять)</label>
     <input class="field" id="c_keep_days" type="number" step="1" min="0" required>
 
+    <label class="fl" for="c_reboot_cron">Автоперезагрузка устройства (crontab: мин час день месяц день_недели; пусто — выключена)</label>
+    <input class="field" id="c_reboot_cron" type="text" placeholder="например: 0 4 * * *" autocomplete="off" spellcheck="false">
+    <div class="hint" id="c_reboot_hint"></div>
+
     <label class="fl" for="c_port">Порт управления (1024–65535)</label>
     <input class="field" id="c_port" type="number" step="1" min="1024" max="65535" required>
 
@@ -234,11 +240,14 @@ select.field{background:#fff}
     <h2>Сведения</h2>
     <div id="infoRows"></div>
     <div class="err" id="infoErr"></div>
-    <div class="actions"><button type="button" class="btn" id="infoClose">Закрыть</button></div>
+    <div class="actions">
+      <button type="button" class="btn danger" id="infoReboot" style="display:none">Перезагрузить устройство</button>
+      <button type="button" class="btn" id="infoClose">Закрыть</button>
+    </div>
   </div>
 </dialog>
 
-<div id="wait"><div class="spin"></div><div>Перезапуск сервиса…</div></div>
+<div id="wait"><div class="spin"></div><div id="waitText">Перезапуск сервиса…</div></div>
 
 <script>
 (() => {
@@ -525,6 +534,8 @@ select.field{background:#fff}
       rows.push(['Батарея', `${b.percent}%, ${b.charging ? 'заряжается' : 'не заряжается'}, ${PLUGGED[b.plugged] || b.plugged}`]);
       rows.push(['Температура батареи', `${b.temperature_c} °C`]);
     }
+    const RB = { deviceOwner: 'доступна (владелец устройства)', accessibility: 'доступна (спец. возможности)', none: 'недоступна' };
+    rows.push(['Перезагрузка устройства', RB[i.rebootMethod] || 'недоступна']);
     rows.push(['IP-адрес', (i.ips && i.ips.length ? i.ips : [i.ip]).join(', ')]);
     if (i.storage) rows.push(['Накопитель', `свободно ${spaced(mb(i.storage.free_bytes))} из ${spaced(mb(i.storage.total_bytes))} МБ`]);
     if (i.ram) rows.push(['Память (ОЗУ)', `свободно ${spaced(mb(i.ram.free_bytes))} из ${spaced(mb(i.ram.total_bytes))} МБ`]);
@@ -544,18 +555,69 @@ select.field{background:#fff}
       box.appendChild(row);
     }
     $('infoErr').textContent = '';
+    $('infoReboot').style.display = i.canReboot ? '' : 'none';
     $('info').showModal();
+  }
+
+  const sleep = ms => new Promise(res => setTimeout(res, ms));
+
+  // true if the device answers right now
+  async function alive() {
+    try {
+      await fetch(`/api/info?${qs()}`, { cache: 'no-store' });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function rebootDevice() {
+    if (!confirm('Перезагрузить устройство? Киоск и камера будут недоступны несколько минут.')) return;
+    let r;
+    try {
+      r = await api('reboot');
+    } catch (e) {
+      $('infoErr').textContent = 'Нет связи с устройством';
+      return;
+    }
+    if (!r.ok) {
+      let msg = 'Ошибка ' + r.status;
+      try { msg = (await r.json()).message || msg; } catch (e) { /* not JSON */ }
+      $('infoErr').textContent = msg;
+      return;
+    }
+    $('info').close();
+    $('waitText').textContent = 'Устройство перезагружается…';
+    $('wait').classList.add('on');
+    // phase 1: wait until the device goes down
+    let down = false;
+    for (let t = 0; t < 20 && !down; t++) {
+      await sleep(2000);
+      down = !(await alive());
+    }
+    if (!down) {
+      $('wait').classList.remove('on');
+      return note('Устройство не перезагрузилось');
+    }
+    // phase 2: wait until it is back (up to 5 minutes)
+    for (let t = 0; t < 100; t++) {
+      await sleep(3000);
+      if (await alive()) return location.reload();
+    }
+    $('wait').classList.remove('on');
+    note('Устройство не отвечает');
   }
 
   /* ---------- settings ---------- */
   const NUM = { threshold: parseFloat, min_gap: parseInt, count: parseInt, interval: parseFloat, keep_days: parseInt, port: parseInt };
 
   async function openConfig() {
-    let c;
+    let c, inf = null;
     try {
-      const r = await api('config');
+      const [r, ri] = await Promise.all([api('config'), api('info').catch(() => null)]);
       if (!r.ok) throw new Error(r.status);
       c = await r.json();
+      if (ri && ri.ok) inf = await ri.json();
     } catch (e) {
       return note('Не удалось получить настройки');
     }
@@ -568,6 +630,11 @@ select.field{background:#fff}
     sc.value = String(c.camera);
     for (const k of Object.keys(NUM)) $('c_' + k).value = c[k];
     $('c_password').value = c.password || '';
+    $('c_reboot_cron').value = c.reboot_cron || '';
+    // the schedule is editable only when the app is allowed to reboot the device
+    const canReboot = !!(inf && inf.canReboot);
+    $('c_reboot_cron').disabled = !canReboot;
+    $('c_reboot_hint').textContent = canReboot ? '' : 'Недоступно: у fCam нет прав на перезагрузку (см. «Сведения»).';
     $('cfgErr').textContent = '';
     $('cfg').showModal();
   }
@@ -576,6 +643,7 @@ select.field{background:#fff}
     const v = { autostart: $('c_autostart').checked, camera: parseInt($('c_camera').value, 10) };
     for (const k of Object.keys(NUM)) v[k] = NUM[k]($('c_' + k).value);
     v.password = $('c_password').value;
+    v.reboot_cron = $('c_reboot_cron').value.trim();
     return v;
   }
 
@@ -585,6 +653,7 @@ select.field{background:#fff}
     if (!form.reportValidity()) return;
     const v = readConfigForm();
     const changed = {};
+    if ($('c_reboot_cron').disabled) delete v.reboot_cron;
     for (const k of Object.keys(v)) if (v[k] !== cfgOrig[k]) changed[k] = v[k];
     if (!Object.keys(changed).length) { $('cfg').close(); return; }
 
@@ -638,6 +707,7 @@ select.field{background:#fff}
   $('bCfg').onclick = openConfig;
   $('bInfo').onclick = openInfo;
   $('infoClose').onclick = () => $('info').close();
+  $('infoReboot').onclick = rebootDevice;
   $('cfgCancel').onclick = () => $('cfg').close();
   $('cfgForm').onsubmit = saveConfig;
   $('bAll').onclick = selectAll;

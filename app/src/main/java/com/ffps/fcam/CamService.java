@@ -84,6 +84,8 @@ public class CamService extends Service implements Camera.PreviewCallback {
     private PowerManager.WakeLock wl;
     private WifiManager.WifiLock wifiLock;
     private NotificationManager nm;
+    private long rebootNext = -1;       // следующее время автоперезагрузки (мс), -1 - нет
+    private long lastWall, lastElapsed; // для обнаружения скачка системных часов
     private long serviceStart = 0;      // SystemClock.elapsedRealtime() на момент запуска сервиса
     private OrientationEventListener orient;
     private volatile int lastOrientation = -1;   // градусы по часовой от естественного положения, -1 - неизвестно
@@ -147,6 +149,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
         running = true;
         if (ht == null) {
             serviceStart = SystemClock.elapsedRealtime();
+            rebootInit();
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "fcam:service");
             wl.acquire();
@@ -227,6 +230,20 @@ public class CamService extends Service implements Camera.PreviewCallback {
             }
 
             @Override
+            public String onReboot() {
+                String m = RebootControl.method(CamService.this);
+                if ("none".equals(m)) return null;
+                // ответ клиенту уходит сразу, сама перезагрузка - через 1.5 с
+                mainH.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        RebootControl.perform(CamService.this);
+                    }
+                }, 1500);
+                return m;
+            }
+
+            @Override
             public String onConfigGet() {
                 return configJson();
             }
@@ -287,6 +304,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
         status = "Работает, порт " + cfg.port;
         nm.notify(ID_RUN, buildRunNotification());
         startWorkers(1000);      // камере нужно время, чтобы освободиться
+        rebootInit();
     }
 
     @Override
@@ -818,6 +836,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
         sb.append("  \"count\": ").append(p.count).append(",\n");
         sb.append("  \"interval\": ").append(p.interval).append(",\n");
         sb.append("  \"keep_days\": ").append(p.keepDays).append(",\n");
+        sb.append("  \"reboot_cron\": ").append(jq(p.rebootCron == null ? "" : p.rebootCron)).append(",\n");
         sb.append("  \"port\": ").append(p.port).append(",\n");
         sb.append("  \"password\": ").append(jq(p.password)).append(",\n");
         sb.append("  \"cameras\": [");      // справочно, при записи игнорируется
@@ -847,6 +866,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
             if (j.has("count")) p.count = j.getInt("count");
             if (j.has("interval")) p.interval = (float) j.getDouble("interval");
             if (j.has("keep_days")) p.keepDays = j.getInt("keep_days");
+            if (j.has("reboot_cron")) p.rebootCron = j.getString("reboot_cron").trim();
             if (j.has("port")) p.port = j.getInt("port");
             if (j.has("password")) p.password = j.getString("password");
         } catch (JSONException e) {
@@ -858,6 +878,47 @@ public class CamService extends Service implements Camera.PreviewCallback {
         p.save(this);
         return null;
     }
+
+    // ---------- автоперезагрузка по расписанию ----------
+
+    private static final long REBOOT_MIN_UPTIME_MS = 10 * 60 * 1000L;   // защита от перезагрузочной петли
+    private static final long REBOOT_LATE_MS = 90 * 1000L;              // насколько позже минуты ещё можно сработать
+
+    /** Читает расписание из настроек и запускает проверку раз в 10 секунд. */
+    private void rebootInit() {
+        mainH.removeCallbacks(rebootTick);
+        rebootNext = -1;
+        String spec = cfg.rebootCron == null ? "" : cfg.rebootCron.trim();
+        if (spec.length() == 0 || !Schedule.isValid(spec)) return;
+        lastWall = System.currentTimeMillis();
+        lastElapsed = SystemClock.elapsedRealtime();
+        rebootNext = Schedule.next(spec, lastWall);
+        mainH.postDelayed(rebootTick, 10000);
+    }
+
+    private final Runnable rebootTick = new Runnable() {
+        @Override
+        public void run() {
+            if (!running) return;
+            String spec = cfg.rebootCron == null ? "" : cfg.rebootCron.trim();
+            long wall = System.currentTimeMillis();
+            long el = SystemClock.elapsedRealtime();
+            // системные часы перевели: wall и elapsed разошлись, время считаем заново и не срабатываем
+            boolean jumped = Math.abs((wall - lastWall) - (el - lastElapsed)) > 5000;
+            lastWall = wall;
+            lastElapsed = el;
+            if (jumped) {
+                rebootNext = Schedule.next(spec, wall);
+            } else if (rebootNext > 0 && wall >= rebootNext) {
+                boolean fresh = wall - rebootNext <= REBOOT_LATE_MS;
+                rebootNext = Schedule.next(spec, wall);      // один раз на подходящую минуту
+                if (fresh && el >= REBOOT_MIN_UPTIME_MS && !"none".equals(RebootControl.method(CamService.this))) {
+                    RebootControl.perform(CamService.this);
+                }
+            }
+            mainH.postDelayed(this, 10000);
+        }
+    };
 
     // ---------- сведения о системе (/api/info) ----------
 
@@ -968,6 +1029,8 @@ public class CamService extends Service implements Camera.PreviewCallback {
         sb.append("  \"timezone\": ").append(jq(TimeZone.getDefault().getID())).append(",\n");
         sb.append("  \"uptime_sec\": ").append(now / 1000).append(",\n");
         sb.append("  \"service_uptime_sec\": ").append(serviceStart > 0 ? (now - serviceStart) / 1000 : 0).append(",\n");
+        sb.append("  \"canReboot\": ").append(!"none".equals(RebootControl.method(this))).append(",\n");
+        sb.append("  \"rebootMethod\": ").append(jq(RebootControl.method(this))).append(",\n");
         sb.append("  \"battery\": ").append(batteryJson()).append(",\n");
         sb.append("  \"ip\": ").append(jq(ips.isEmpty() ? "" : ips.get(0))).append(",\n");
         sb.append("  \"ips\": [");

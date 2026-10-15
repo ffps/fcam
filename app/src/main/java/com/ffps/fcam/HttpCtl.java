@@ -14,7 +14,7 @@ import java.net.URLDecoder;
 /**
  * Минимальный HTTP-сервер. Параметр password - в строке запроса.
  * GET /api/shot, /api/list (JSON), /api/photo?name=, /api/thumb?name=, /api/delete?name=,
- * GET/POST /api/config (JSON), GET /api/info (JSON), GET /api и /api/ - список методов (без пароля),
+ * GET/POST /api/config (JSON), GET /api/info (JSON), GET /api/reboot, GET /api и /api/ - список методов (без пароля),
  * GET / - DCIM/fCam/index.html (без пароля).
  */
 public class HttpCtl extends Thread {
@@ -34,6 +34,9 @@ public class HttpCtl extends Thread {
 
         /** Удаление фото по имени: 0 - удалено, 1 - нет такого файла, 2 - не удалось удалить. */
         int onDelete(String name);
+
+        /** Планирует перезагрузку; возвращает способ ("deviceOwner"/"accessibility") или null, если прав нет. */
+        String onReboot();
 
         /** Сведения о системе в JSON. */
         String onInfo();
@@ -56,6 +59,14 @@ public class HttpCtl extends Thread {
     private static final String JSON = "application/json; charset=utf-8";
     private static final int MAX_BODY = 16384;
 
+    private static final String NO_REBOOT = "{\n"
+            + "  \"ok\": false,\n"
+            + "  \"error\": \"no_permission\",\n"
+            + "  \"method\": \"none\",\n"
+            + "  \"message\": \"Нет прав на перезагрузку: сделайте fCam владельцем устройства (Android 7+, команда adb shell dpm set-device-owner) "
+            + "или включите службу специальных возможностей fCam (Android 5+). На Android 4.x перезагрузка недоступна.\"\n"
+            + "}\n";
+
     /** Список методов для /api (не требует пароля). */
     private static final String API_INDEX = "{\n"
             + "  \"GET /\": \"Страница DCIM/fCam/index.html, если она есть (без пароля)\",\n"
@@ -67,6 +78,7 @@ public class HttpCtl extends Thread {
             + "  \"GET /api/delete\": \"Удалить фото по имени. Параметры: password, name\",\n"
             + "  \"GET /api/config\": \"Текущие настройки (JSON). Параметры: password\",\n"
             + "  \"POST /api/config\": \"Изменить настройки: в теле JSON с нужными ключами, сервис перезапустится. Параметры: password\",\n"
+            + "  \"GET /api/reboot\": \"Перезагрузить устройство (через пару секунд после ответа). Нужны права: владелец устройства или служба спец. возможностей. Параметры: password\",\n"
             + "  \"GET /api/info\": \"Сведения о системе (JSON): устройство, Android, аптайм, батарея, IP, память. Параметры: password\"\n"
             + "}\n";
 
@@ -203,7 +215,8 @@ public class HttpCtl extends Thread {
         boolean delete = "/api/delete".equals(path);
         boolean config = "/api/config".equals(path);
         boolean info = "/api/info".equals(path);
-        if (!shot && !list && !photo && !thumb && !delete && !config && !info) {
+        boolean reboot = "/api/reboot".equals(path);
+        if (!shot && !list && !photo && !thumb && !delete && !config && !info && !reboot) {
             reply(s, 404, "Not Found");
             return;
         }
@@ -239,6 +252,16 @@ public class HttpCtl extends Thread {
                 return;
             }
             replyBody(s, 200, "OK", cb.onConfigGet(), JSON);
+            return;
+        }
+        if (reboot) {
+            String m = cb.onReboot();
+            if (m == null) {
+                replyBody(s, 501, "Not Implemented", NO_REBOOT, JSON);
+            } else {
+                replyBody(s, 200, "OK", "{\n  \"ok\": true,\n  \"method\": \"" + m
+                        + "\",\n  \"message\": \"Перезагрузка через пару секунд\"\n}\n", JSON);
+            }
             return;
         }
         if (info) {

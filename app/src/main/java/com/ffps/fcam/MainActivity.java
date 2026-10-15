@@ -2,11 +2,17 @@ package com.ffps.fcam;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.Camera;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.provider.Settings;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -23,11 +29,12 @@ import java.util.Enumeration;
 
 public class MainActivity extends Activity {
 
-    private EditText eThr, eGap, eCnt, eInt, eKeep, ePort, ePass;
+    private EditText eThr, eGap, eCnt, eInt, eKeep, eReboot, ePort, ePass;
     private CheckBox cbAuto;
     private Spinner spCam;
     private TextView tvStatus, tvHint, tvVer;
-    private Button btn;
+    private Button btn, btnPerm, btnOwner;
+    private String lastRebootKey = "";
     private final Handler h = new Handler();
     private Boolean lastOn = null;      // last applied state of the controls
     private String lastStatus = "";
@@ -49,6 +56,9 @@ public class MainActivity extends Activity {
         eCnt = (EditText) findViewById(R.id.eCnt);
         eInt = (EditText) findViewById(R.id.eInt);
         eKeep = (EditText) findViewById(R.id.eKeep);
+        eReboot = (EditText) findViewById(R.id.eReboot);
+        btnPerm = (Button) findViewById(R.id.btnRebootPerm);
+        btnOwner = (Button) findViewById(R.id.btnRebootOwner);
         ePort = (EditText) findViewById(R.id.ePort);
         ePass = (EditText) findViewById(R.id.ePass);
         cbAuto = (CheckBox) findViewById(R.id.cbAuto);
@@ -94,9 +104,23 @@ public class MainActivity extends Activity {
         eCnt.setText(String.valueOf(p.count));
         eInt.setText(fmt(p.interval));
         eKeep.setText(String.valueOf(p.keepDays));
+        eReboot.setText(p.rebootCron);
         ePort.setText(String.valueOf(p.port));
         ePass.setText(p.password);
         tvHint.setText("Фото сохраняются в DCIM/fCam/");
+
+        btnPerm.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showRebootDialog();
+            }
+        });
+        btnOwner.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                confirmClearOwner();
+            }
+        });
 
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -162,6 +186,7 @@ public class MainActivity extends Activity {
             btn.setText(on ? "STOP SERVICE" : "START SERVICE");
             btn.setBackgroundResource(on ? R.drawable.btn_stop : R.drawable.btn_start);
         }
+        refreshRebootUi(on);
 
         StringBuilder sb = new StringBuilder();
         if (on && CamService.running) {
@@ -181,6 +206,99 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Подпись кнопки прав, доступность поля crontab и кнопка снятия прав. Трогаем виджеты только при изменении. */
+    private void refreshRebootUi(boolean on) {
+        String m = RebootControl.method(this);
+        boolean a11yOn = RebootControl.accessibilityEnabled(this);
+        String key = on + "|" + m + "|" + a11yOn + "|" + Build.VERSION.SDK_INT;
+        if (key.equals(lastRebootKey)) return;
+        lastRebootKey = key;
+
+        String label;
+        boolean canClick = true;
+        if (Build.VERSION.SDK_INT < 21) {
+            label = "Перезагрузка недоступна на Android 4.x";
+            canClick = false;
+        } else if ("deviceOwner".equals(m)) {
+            label = "Права на перезагрузку: есть (владелец устройства)";
+        } else if ("accessibility".equals(m)) {
+            label = "Права на перезагрузку: есть (спец. возможности)";
+        } else if (a11yOn) {
+            label = "Права на перезагрузку: служба включена, ждём подключения…";
+        } else {
+            label = "Права на перезагрузку: нет. Нажмите, чтобы получить";
+        }
+        btnPerm.setText(label);
+        btnPerm.setEnabled(canClick);
+        eReboot.setEnabled(!on && !"none".equals(m));
+        btnOwner.setVisibility("deviceOwner".equals(m) ? View.VISIBLE : View.GONE);
+    }
+
+    private void showRebootDialog() {
+        String m = RebootControl.method(this);
+        StringBuilder msg = new StringBuilder();
+        msg.append("Сейчас: ");
+        msg.append("deviceOwner".equals(m) ? "есть права владельца устройства"
+                : "accessibility".equals(m) ? "работает служба специальных возможностей" : "прав нет");
+        msg.append("\n\n");
+        final String cmd = RebootControl.adbCommand(this);
+        if (Build.VERSION.SDK_INT >= 24) {
+            msg.append("Способ 1 (надёжный, Android 7+): сделать fCam владельцем устройства. ")
+                    .append("На устройстве не должно быть аккаунтов. Выполните на компьютере:\n\n")
+                    .append(cmd).append("\n\n");
+        }
+        msg.append("Способ ").append(Build.VERSION.SDK_INT >= 24 ? "2" : "1")
+                .append(": включить службу специальных возможностей «fCam». Она открывает меню питания и нажимает «Перезагрузка».");
+        if (Build.VERSION.SDK_INT >= 33) {
+            msg.append("\nНа Android 13+ для приложения не из магазина сначала разрешите ограниченные настройки: ")
+                    .append("Настройки → Приложения → fCam → меню ⋮ → «Разрешить ограниченные настройки».");
+        }
+        AlertDialog.Builder b = new AlertDialog.Builder(this)
+                .setTitle("Права на перезагрузку")
+                .setMessage(msg.toString())
+                .setNegativeButton("Закрыть", null);
+        if (Build.VERSION.SDK_INT >= 21) {
+            b.setPositiveButton("Спец. возможности", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface d, int w) {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                    } catch (Exception e) {
+                        Toast.makeText(MainActivity.this, "Не удалось открыть настройки", Toast.LENGTH_LONG).show();
+                    }
+                }
+            });
+        }
+        if (Build.VERSION.SDK_INT >= 24) {
+            b.setNeutralButton("Копировать команду", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface d, int w) {
+                    ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(ClipData.newPlainText("adb", cmd));
+                    Toast.makeText(MainActivity.this, "Команда скопирована", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+        b.show();
+    }
+
+    private void confirmClearOwner() {
+        new AlertDialog.Builder(this)
+                .setTitle("Снять права владельца устройства?")
+                .setMessage("Перезагрузка через владельца устройства перестанет работать, зато приложение можно будет удалить.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Снять", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int w) {
+                        boolean ok = RebootControl.clearOwner(MainActivity.this);
+                        Toast.makeText(MainActivity.this, ok ? "Права сняты" : "Не удалось снять права", Toast.LENGTH_LONG).show();
+                        lastRebootKey = "";
+                        refresh();
+                    }
+                })
+                .show();
+    }
+
     private void startService() {
         Prefs p = new Prefs();
         try {
@@ -191,10 +309,15 @@ public class MainActivity extends Activity {
             p.count = Integer.parseInt(eCnt.getText().toString().trim());
             p.interval = Float.parseFloat(eInt.getText().toString().trim().replace(',', '.'));
             p.keepDays = Integer.parseInt(eKeep.getText().toString().trim());
+            p.rebootCron = eReboot.getText().toString().trim();
             p.port = Integer.parseInt(ePort.getText().toString().trim());
             p.password = ePass.getText().toString();
         } catch (NumberFormatException ex) {
             Toast.makeText(this, "Проверьте числовые поля", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (p.rebootCron.length() > 0 && !Schedule.isValid(p.rebootCron)) {
+            Toast.makeText(this, "Неверное выражение crontab: нужно 5 полей (минута час день месяц день_недели)", Toast.LENGTH_LONG).show();
             return;
         }
         if (p.port < 1024 || p.port > 65535) {

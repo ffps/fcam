@@ -98,6 +98,31 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="8dp"
+            android:text="Автоперезагрузка устройства (crontab: мин час день месяц день_недели; пусто — выключена)" />
+
+        <EditText
+            android:id="@+id/eReboot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="например: 0 4 * * *"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/btnRebootPerm"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <Button
+            android:id="@+id/btnRebootOwner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Снять права владельца устройства"
+            android:visibility="gone" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
             android:text="Порт управления (1024–65535)" />
 
         <EditText

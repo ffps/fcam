@@ -11,6 +11,7 @@ public class Prefs {
     public int minGap = 60;        // сек между началами серий
     public int count = 3;          // кадров в серии
     public float interval = 1f;    // сек между кадрами
+    public String rebootCron = "";   // crontab автоперезагрузки (пусто - выключена)
     public int keepDays = 0;       // хранить фото, дней (0 - не удалять)
     public int port = 8081;
     public String password = "";
@@ -30,6 +31,7 @@ public class Prefs {
         p.count = s.getInt("count", p.count);
         p.interval = s.getFloat("interval", p.interval);
         p.keepDays = s.getInt("keepDays", p.keepDays);
+        p.rebootCron = s.getString("rebootCron", p.rebootCron);
         p.port = s.getInt("port", p.port);
         p.password = s.getString("password", p.password);
         return p;
@@ -44,6 +46,8 @@ public class Prefs {
         if (keepDays < 0) return "keep_days не может быть отрицательным";
         if (port < 1024 || port > 65535) return "port должен быть от 1024 до 65535";
         if (camera < 0) return "camera не может быть отрицательным";
+        if (rebootCron != null && rebootCron.trim().length() > 0 && !Schedule.isValid(rebootCron))
+            return "reboot_cron: неверное выражение crontab (нужно 5 полей: минута час день месяц день_недели)";
         return null;
     }
 
@@ -57,6 +61,7 @@ public class Prefs {
                 .putInt("count", count)
                 .putFloat("interval", interval)
                 .putInt("keepDays", keepDays)
+                .putString("rebootCron", rebootCron == null ? "" : rebootCron)
                 .putInt("port", port)
                 .putString("password", password)
                 .commit();
