@@ -318,6 +318,7 @@ public class HttpCtl extends Thread {
         String head = "HTTP/1.1 " + code + " " + text + "\r\n"
                 + "Content-Type: " + type + "\r\n"
                 + "Content-Length: " + body.length + "\r\n"
+                + "Cache-Control: no-store\r\n"
                 + "Connection: close\r\n\r\n";
         OutputStream o = s.getOutputStream();
         o.write(head.getBytes("ISO-8859-1"));

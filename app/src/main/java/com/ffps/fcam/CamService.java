@@ -28,6 +28,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.StatFs;
 import android.os.SystemClock;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.view.OrientationEventListener;
 import android.view.WindowManager;
@@ -201,12 +202,8 @@ public class CamService extends Service implements Camera.PreviewCallback {
             public int onDelete(String name) {
                 File f = findPhoto(name);
                 if (f == null) return 1;
-                boolean ok = f.delete();
-                if (ok) {
-                    deleteThumb(f.getName());
-                    scanDeleted(new String[]{f.getAbsolutePath()});
-                }
-                return ok ? 0 : 2;
+                deletePhotoFile(f);
+                return listed(f) ? 2 : 0;      // успех только если файла действительно не осталось в каталоге
             }
 
             @Override
@@ -619,19 +616,61 @@ public class CamService extends Service implements Camera.PreviewCallback {
         }
     }
 
+    /** Журнал последнего удаления фото (виден в /api/info как deleteLog). */
+    private volatile String deleteLog = "";
+
+    /** Есть ли файл в списке каталога (readdir, а не stat: на старых Android их ответы могут расходиться). */
+    private static boolean listed(File f) {
+        String[] names = f.getParentFile().list();
+        if (names != null) {
+            for (String n : names) {
+                if (n.equals(f.getName())) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Удаляет файл фото и проверяет результат по списку каталога. Если файл остался (на некоторых старых Android
+     * File.delete() возвращает true, а запись в каталоге живёт дальше), пробуем переименование и удаление через
+     * медиа-провайдер. Что сработало, записывается в deleteLog.
+     */
+    private void deletePhotoFile(File f) {
+        String path = f.getAbsolutePath();
+        StringBuilder lg = new StringBuilder();
+        boolean d = f.delete();
+        lg.append("delete=").append(d).append(" listed=").append(listed(f));
+        if (listed(f)) {
+            File tmp = new File(f.getParentFile(), f.getName() + ".del");
+            boolean r = f.renameTo(tmp);
+            boolean d2 = tmp.delete();
+            lg.append(" | rename=").append(r).append(" delete2=").append(d2).append(" listed=").append(listed(f));
+        }
+        if (listed(f)) {
+            int rows = -1;
+            try {
+                rows = getContentResolver().delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        MediaStore.Images.Media.DATA + "=?", new String[]{path});
+            } catch (Exception e) {
+                lg.append(" | mediastore error ").append(e);
+            }
+            lg.append(" | mediastore rows=").append(rows).append(" listed=").append(listed(f));
+        }
+        if (!listed(f)) {
+            deleteThumb(f.getName());
+            scanDeleted(new String[]{path});
+        }
+        deleteLog = path + ": " + lg;
+    }
+
     /** Удаляет фото старше cfg.keepDays суток (0 - не удалять). */
     private void cleanupOld() {
         if (cfg.keepDays <= 0) return;
         try {
             long limit = System.currentTimeMillis() - cfg.keepDays * 86400000L;
-            java.util.ArrayList<String> gone = new java.util.ArrayList<String>();
             for (File f : photos()) {
-                if (f.lastModified() < limit && f.delete()) {
-                    deleteThumb(f.getName());
-                    gone.add(f.getAbsolutePath());
-                }
+                if (f.lastModified() < limit) deletePhotoFile(f);
             }
-            if (!gone.isEmpty()) scanDeleted(gone.toArray(new String[gone.size()]));
         } catch (Exception ignored) {
         }
     }
@@ -1043,6 +1082,9 @@ public class CamService extends Service implements Camera.PreviewCallback {
             sb.append(jq(ips.get(i)));
         }
         sb.append("],\n");
+        sb.append("  \"photo_dir\": ").append(jq(photoDir().getAbsolutePath())).append(",\n");
+        String dlog = deleteLog;
+        if (dlog != null && dlog.length() > 0) sb.append("  \"deleteLog\": ").append(jq(dlog)).append(",\n");
         sb.append("  \"storage\": {\"total_bytes\": ").append(st[0]).append(", \"free_bytes\": ").append(st[1]).append("},\n");
         sb.append("  \"ram\": {\"total_bytes\": ").append(ramTotal).append(", \"free_bytes\": ").append(ramFree).append("}\n");
         sb.append("}\n");
