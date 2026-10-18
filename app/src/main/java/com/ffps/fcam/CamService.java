@@ -638,6 +638,8 @@ public class CamService extends Service implements Camera.PreviewCallback {
     private void deletePhotoFile(File f) {
         String path = f.getAbsolutePath();
         StringBuilder lg = new StringBuilder();
+        lg.append("canWrite=").append(f.canWrite()).append(" dirCanWrite=").append(f.getParentFile().canWrite())
+                .append(" size=").append(f.length()).append(" | ");
         boolean d = f.delete();
         lg.append("delete=").append(d).append(" listed=").append(listed(f));
         if (listed(f)) {
@@ -655,6 +657,21 @@ public class CamService extends Service implements Camera.PreviewCallback {
                 lg.append(" | mediastore error ").append(e);
             }
             lg.append(" | mediastore rows=").append(rows).append(" listed=").append(listed(f));
+        }
+        if (listed(f)) {
+            // последняя попытка: системная команда rm, заодно её сообщение об ошибке подскажет причину
+            try {
+                Process pr = Runtime.getRuntime().exec(new String[]{"rm", path});
+                java.io.InputStream es = pr.getErrorStream();
+                byte[] buf = new byte[300];
+                int n = es.read(buf);
+                int code = pr.waitFor();
+                lg.append(" | rm exit=").append(code);
+                if (n > 0) lg.append(" err=").append(new String(buf, 0, n).trim());
+            } catch (Exception e) {
+                lg.append(" | rm error ").append(e);
+            }
+            lg.append(" listed=").append(listed(f));
         }
         if (!listed(f)) {
             deleteThumb(f.getName());
