@@ -202,8 +202,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
             public int onDelete(String name) {
                 File f = findPhoto(name);
                 if (f == null) return 1;
-                deletePhotoFile(f);
-                return listed(f) ? 2 : 0;      // успех только если файла действительно не осталось в каталоге
+                return deletePhotoFile(f) ? 0 : 2;      // успех только если файла действительно не осталось в каталоге
             }
 
             @Override
@@ -638,23 +637,26 @@ public class CamService extends Service implements Camera.PreviewCallback {
 
     /**
      * Удаляет файл фото и проверяет результат по списку каталога. Если файл остался (на некоторых старых Android
-     * File.delete() возвращает true, а запись в каталоге живёт дальше), пробуем переименование и удаление через
-     * медиа-провайдер. Что сработало, записывается в deleteLog.
+     * File.delete() возвращает true, а запись в каталоге живёт дальше), пробуем переименование, удаление через
+     * медиа-провайдер и команду rm. Что сработало, записывается в deleteLog. Возвращает true, если файла больше нет.
+     * Список каталога читается один раз в обычном случае (когда File.delete() сразу сработал).
      */
-    private void deletePhotoFile(File f) {
+    private boolean deletePhotoFile(File f) {
         String path = f.getAbsolutePath();
         StringBuilder lg = new StringBuilder();
         lg.append("canWrite=").append(f.canWrite()).append(" dirCanWrite=").append(f.getParentFile().canWrite())
                 .append(" size=").append(f.length()).append(" | ");
         boolean d = f.delete();
-        lg.append("delete=").append(d).append(" listed=").append(listed(f));
-        if (listed(f)) {
+        boolean still = listed(f);
+        lg.append("delete=").append(d).append(" listed=").append(still);
+        if (still) {
             File tmp = new File(f.getParentFile(), f.getName() + ".del");
             boolean r = f.renameTo(tmp);
             boolean d2 = tmp.delete();
-            lg.append(" | rename=").append(r).append(" delete2=").append(d2).append(" listed=").append(listed(f));
+            still = listed(f);
+            lg.append(" | rename=").append(r).append(" delete2=").append(d2).append(" listed=").append(still);
         }
-        if (listed(f)) {
+        if (still) {
             int rows = -1;
             try {
                 rows = getContentResolver().delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -662,9 +664,10 @@ public class CamService extends Service implements Camera.PreviewCallback {
             } catch (Exception e) {
                 lg.append(" | mediastore error ").append(e);
             }
-            lg.append(" | mediastore rows=").append(rows).append(" listed=").append(listed(f));
+            still = listed(f);
+            lg.append(" | mediastore rows=").append(rows).append(" listed=").append(still);
         }
-        if (listed(f)) {
+        if (still) {
             // последняя попытка: системная команда rm, заодно её сообщение об ошибке подскажет причину
             try {
                 Process pr = Runtime.getRuntime().exec(new String[]{"rm", path});
@@ -677,13 +680,15 @@ public class CamService extends Service implements Camera.PreviewCallback {
             } catch (Exception e) {
                 lg.append(" | rm error ").append(e);
             }
-            lg.append(" listed=").append(listed(f));
+            still = listed(f);
+            lg.append(" listed=").append(still);
         }
-        if (!listed(f)) {
+        if (!still) {
             deleteThumb(f.getName());
             scanDeleted(new String[]{path});
         }
         deleteLog = path + ": " + lg;
+        return !still;
     }
 
     /** Удаляет фото старше cfg.keepDays суток (0 - не удалять). */
