@@ -608,11 +608,17 @@ public class CamService extends Service implements Camera.PreviewCallback {
         return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "fCam");
     }
 
-    /** Сообщает медиа-базе об удалённых файлах, чтобы они пропали из галереи. */
+    /**
+     * Убирает записи об удалённых файлах из медиа-базы. Нельзя вызывать MediaScannerConnection.scanFile для
+     * удалённого файла: на старых Android (замечено на 4.2) сканер создаёт пустой файл с тем же именем заново.
+     */
     private void scanDeleted(String[] paths) {
-        try {
-            MediaScannerConnection.scanFile(this, paths, null, null);
-        } catch (Exception ignored) {
+        for (String p : paths) {
+            try {
+                getContentResolver().delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        MediaStore.Images.Media.DATA + "=?", new String[]{p});
+            } catch (Exception ignored) {
+            }
         }
     }
 
