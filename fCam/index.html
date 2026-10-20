@@ -708,6 +708,18 @@ select.field{background:#fff}
   $('bInfo').onclick = openInfo;
   $('infoClose').onclick = () => $('info').close();
   $('infoReboot').onclick = rebootDevice;
+
+  // close a dialog when the click is outside of it (on the dimmed backdrop), like Escape does
+  function closeOnBackdrop(dlg) {
+    let downOnBackdrop = false;     // a drag that starts inside (text selection) must not close the dialog
+    dlg.addEventListener('pointerdown', e => { downOnBackdrop = e.target === dlg; });
+    dlg.addEventListener('click', e => {
+      if (downOnBackdrop && e.target === dlg) dlg.close();
+      downOnBackdrop = false;
+    });
+  }
+  closeOnBackdrop($('cfg'));
+  closeOnBackdrop($('info'));
   $('cfgCancel').onclick = () => $('cfg').close();
   $('cfgForm').onsubmit = saveConfig;
   $('bAll').onclick = selectAll;
