@@ -534,7 +534,7 @@ select.field{background:#fff}
       rows.push(['Батарея', `${b.percent}%, ${b.charging ? 'заряжается' : 'не заряжается'}, ${PLUGGED[b.plugged] || b.plugged}`]);
       rows.push(['Температура батареи', `${b.temperature_c} °C`]);
     }
-    const RB = { deviceOwner: 'доступна (владелец устройства)', accessibility: 'доступна (спец. возможности)', none: 'недоступна' };
+    const RB = { deviceOwner: 'доступна (владелец устройства)', root: 'доступна (root)', accessibility: 'доступна (спец. возможности)', none: 'недоступна' };
     rows.push(['Перезагрузка устройства', RB[i.rebootMethod] || 'недоступна']);
     rows.push(['IP-адрес', (i.ips && i.ips.length ? i.ips : [i.ip]).join(', ')]);
     if (i.storage) rows.push(['Накопитель', `свободно ${spaced(mb(i.storage.free_bytes))} из ${spaced(mb(i.storage.total_bytes))} МБ`]);

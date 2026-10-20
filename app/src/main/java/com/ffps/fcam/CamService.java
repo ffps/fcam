@@ -1098,7 +1098,8 @@ public class CamService extends Service implements Camera.PreviewCallback {
         sb.append("  \"service_uptime_sec\": ").append(serviceStart > 0 ? (now - serviceStart) / 1000 : 0).append(",\n");
         sb.append("  \"canReboot\": ").append(!"none".equals(RebootControl.method(this))).append(",\n");
         sb.append("  \"rebootMethod\": ").append(jq(RebootControl.method(this))).append(",\n");
-        String rlog = Build.VERSION.SDK_INT >= 21 ? RebootAccessibilityService.lastLog : "";
+        String rlog = RebootControl.rootLog;
+        if ((rlog == null || rlog.length() == 0) && Build.VERSION.SDK_INT >= 21) rlog = RebootAccessibilityService.lastLog;
         if (rlog != null && rlog.length() > 0) {      // журнал последней попытки перезагрузки через спец. возможности
             sb.append("  \"rebootLog\": ").append(jq(rlog)).append(",\n");
         }

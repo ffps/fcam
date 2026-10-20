@@ -2,19 +2,42 @@ package com.ffps.fcam;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.hardware.Camera;
 
 public class Prefs {
     public boolean enabled = false;
     public boolean autostart = false;
-    public int camera = 0;
-    public float threshold = 2f;   // % изменившихся точек
-    public int minGap = 60;        // сек между началами серий
-    public int count = 3;          // кадров в серии
+    public int camera = 0;         // при первом запуске берётся фронтальная камера (см. load)
+    public float threshold = 10f;  // % изменившихся точек
+    public int minGap = 30;        // сек между началами серий
+    public int count = 2;          // кадров в серии
     public float interval = 1f;    // сек между кадрами
     public String rebootCron = "";   // crontab автоперезагрузки (пусто - выключена)
     public int keepDays = 0;       // хранить фото, дней (0 - не удалять)
-    public int port = 8081;
+    public int port = 8080;
     public String password = "";
+
+    private static int defaultCamera = -2;
+
+    /** Индекс первой фронтальной камеры (если её нет - 0). Определяется один раз. */
+    private static int frontCameraIndex() {
+        if (defaultCamera != -2) return defaultCamera;
+        int r = 0;
+        try {
+            int n = Camera.getNumberOfCameras();
+            Camera.CameraInfo ci = new Camera.CameraInfo();
+            for (int i = 0; i < n; i++) {
+                Camera.getCameraInfo(i, ci);
+                if (ci.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+                    r = i;
+                    break;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        defaultCamera = r;
+        return r;
+    }
 
     private static SharedPreferences sp(Context c) {
         return c.getSharedPreferences("fcam", Context.MODE_PRIVATE);
@@ -25,7 +48,8 @@ public class Prefs {
         Prefs p = new Prefs();
         p.enabled = s.getBoolean("enabled", p.enabled);
         p.autostart = s.getBoolean("autostart", p.autostart);
-        p.camera = s.getInt("camera", p.camera);
+        // пока камера не выбрана и не сохранена, по умолчанию фронтальная
+        p.camera = s.contains("camera") ? s.getInt("camera", p.camera) : frontCameraIndex();
         p.threshold = s.getFloat("threshold", p.threshold);
         p.minGap = s.getInt("minGap", p.minGap);
         p.count = s.getInt("count", p.count);

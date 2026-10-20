@@ -33,7 +33,7 @@ public class MainActivity extends Activity {
     private CheckBox cbAuto;
     private Spinner spCam;
     private TextView tvStatus, tvHint, tvVer;
-    private Button btn, btnPerm, btnOwner;
+    private Button btn, btnPerm, btnOwner, btnRoot;
     private String lastRebootKey = "";
     private final Handler h = new Handler();
     private Boolean lastOn = null;      // last applied state of the controls
@@ -59,6 +59,7 @@ public class MainActivity extends Activity {
         eReboot = (EditText) findViewById(R.id.eReboot);
         btnPerm = (Button) findViewById(R.id.btnRebootPerm);
         btnOwner = (Button) findViewById(R.id.btnRebootOwner);
+        btnRoot = (Button) findViewById(R.id.btnRebootRoot);
         ePort = (EditText) findViewById(R.id.ePort);
         ePass = (EditText) findViewById(R.id.ePass);
         cbAuto = (CheckBox) findViewById(R.id.cbAuto);
@@ -113,6 +114,23 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v) {
                 showRebootDialog();
+            }
+        });
+        btnRoot.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Toast.makeText(MainActivity.this, "Подтвердите запрос root на экране устройства", Toast.LENGTH_LONG).show();
+                RebootControl.checkRootAsync(MainActivity.this, new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(MainActivity.this, RebootControl.rootGranted(MainActivity.this)
+                                ? "Root: доступ есть" : "Root: доступа нет", Toast.LENGTH_LONG).show();
+                        lastRebootKey = "";
+                        refresh();
+                    }
+                });
+                lastRebootKey = "";
+                refresh();
             }
         });
         btnOwner.setOnClickListener(new View.OnClickListener() {
@@ -210,14 +228,20 @@ public class MainActivity extends Activity {
     private void refreshRebootUi(boolean on) {
         String m = RebootControl.method(this);
         boolean a11yOn = RebootControl.accessibilityEnabled(this);
-        String key = on + "|" + m + "|" + a11yOn + "|" + Build.VERSION.SDK_INT;
+        boolean su = RebootControl.suPresent();
+        boolean rootOn = RebootControl.rootGranted(this);
+        boolean checking = RebootControl.rootChecking;
+        String key = on + "|" + m + "|" + a11yOn + "|" + Build.VERSION.SDK_INT + "|" + su + "|" + rootOn + "|" + checking;
         if (key.equals(lastRebootKey)) return;
         lastRebootKey = key;
 
         String label;
         boolean canClick = true;
-        if (Build.VERSION.SDK_INT < 21) {
-            label = "Перезагрузка недоступна на Android 4.x";
+        if ("root".equals(m)) {
+            label = "Права на перезагрузку: есть (root)";
+        } else if (Build.VERSION.SDK_INT < 21) {
+            label = su ? "Android 4.x: без root перезагрузка недоступна. Root найден, проверьте доступ кнопкой ниже"
+                    : "Перезагрузка недоступна на Android 4.x (нужен root)";
             canClick = false;
         } else if ("deviceOwner".equals(m)) {
             label = "Права на перезагрузку: есть (владелец устройства)";
@@ -232,6 +256,11 @@ public class MainActivity extends Activity {
         btnPerm.setEnabled(canClick);
         eReboot.setEnabled(!on && !"none".equals(m));
         btnOwner.setVisibility("deviceOwner".equals(m) ? View.VISIBLE : View.GONE);
+        btnRoot.setVisibility(su ? View.VISIBLE : View.GONE);
+        btnRoot.setEnabled(!checking);
+        btnRoot.setText(checking ? "Root: проверка… подтвердите запрос на экране устройства"
+                : rootOn ? "Root: доступ есть (проверить заново)"
+                : "Root: найден su. Нажмите, чтобы проверить доступ");
     }
 
     private void showRebootDialog() {
@@ -248,7 +277,11 @@ public class MainActivity extends Activity {
                     .append(cmd).append("\n\n");
         }
         msg.append("Способ ").append(Build.VERSION.SDK_INT >= 24 ? "2" : "1")
-                .append(": включить службу специальных возможностей «fCam». Она открывает меню питания и нажимает «Перезагрузка».");
+                .append(": если на устройстве есть root, появится кнопка проверки root (запрос подтверждается на экране).");
+        if (Build.VERSION.SDK_INT >= 21) {
+            msg.append("\n\nСпособ ").append(Build.VERSION.SDK_INT >= 24 ? "3" : "2")
+                    .append(": включить службу специальных возможностей «fCam». Она открывает меню питания и нажимает «Перезагрузка».");
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             msg.append("\nНа Android 13+ для приложения не из магазина сначала разрешите ограниченные настройки: ")
                     .append("Настройки → Приложения → fCam → меню ⋮ → «Разрешить ограниченные настройки».");
