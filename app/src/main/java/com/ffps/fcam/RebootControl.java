@@ -143,9 +143,17 @@ public final class RebootControl {
         try {
             Process p = Runtime.getRuntime().exec("su");
             OutputStream os = p.getOutputStream();
-            // несколько вариантов команды: какая-то из них есть на любой прошивке; после успешной остальные не выполнятся
-            os.write("reboot\n/system/bin/reboot\nsvc power reboot\nexit\n".getBytes());
+            // 1) штатная перезагрузка через систему (приложения и хранилище завершаются корректно):
+            //    svc power reboot (есть на новых Android) и am start ... REBOOT (работает и на старых);
+            // 2) если за 30 секунд устройство не ушло в перезагрузку - прямая команда reboot
+            os.write(("svc power reboot\n"
+                    + "am start -a android.intent.action.REBOOT\n"
+                    + "sleep 30\n"
+                    + "reboot\n"
+                    + "/system/bin/reboot\n"
+                    + "exit\n").getBytes());
             os.flush();
+            rootLog = "reboot: штатная перезагрузка запрошена через su, прямая reboot - через 30 с, если не помогло";
             return true;
         } catch (Exception e) {
             rootLog = "su reboot error: " + e;
