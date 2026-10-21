@@ -13,7 +13,7 @@ import java.net.URLDecoder;
 
 /**
  * Минимальный HTTP-сервер. Параметр password - в строке запроса.
- * GET /api/shot, /api/list (JSON), /api/photo?name=, /api/thumb?name=, /api/delete?name=,
+ * GET /api/shot, /api/list (JSON), /api/photo?name=, /api/thumb?name=, /api/delete?name=, /api/delete_all,
  * GET/POST /api/config (JSON), GET /api/info (JSON), GET /api/reboot, GET /api и /api/ - список методов (без пароля),
  * GET / - DCIM/fCam/index.html (без пароля).
  */
@@ -40,6 +40,9 @@ public class HttpCtl extends Thread {
 
         /** Сведения о системе в JSON. */
         String onInfo();
+
+        /** Удаляет все фото; возвращает {удалено, не удалось}. */
+        int[] onDeleteAll();
 
         /** Текущие настройки в JSON. */
         String onConfigGet();
@@ -75,6 +78,7 @@ public class HttpCtl extends Thread {
             + "  \"GET /api/list\": \"Список фото (JSON). Параметры: password\",\n"
             + "  \"GET /api/photo\": \"Фото по имени (JPEG). Параметры: password, name\",\n"
             + "  \"GET /api/thumb\": \"Миниатюра фото (JPEG). Параметры: password, name\",\n"
+            + "  \"GET /api/delete_all\": \"Удалить все фото (*.jpg) из папки fCam. Параметры: password\",\n"
             + "  \"GET /api/delete\": \"Удалить фото по имени. Параметры: password, name\",\n"
             + "  \"GET /api/config\": \"Текущие настройки (JSON). Параметры: password\",\n"
             + "  \"POST /api/config\": \"Изменить настройки: в теле JSON с нужными ключами, сервис перезапустится. Параметры: password\",\n"
@@ -213,10 +217,11 @@ public class HttpCtl extends Thread {
         boolean photo = "/api/photo".equals(path);
         boolean thumb = "/api/thumb".equals(path);
         boolean delete = "/api/delete".equals(path);
+        boolean deleteAll = "/api/delete_all".equals(path);
         boolean config = "/api/config".equals(path);
         boolean info = "/api/info".equals(path);
         boolean reboot = "/api/reboot".equals(path);
-        if (!shot && !list && !photo && !thumb && !delete && !config && !info && !reboot) {
+        if (!shot && !list && !photo && !thumb && !delete && !deleteAll && !config && !info && !reboot) {
             reply(s, 404, "Not Found");
             return;
         }
@@ -284,6 +289,13 @@ public class HttpCtl extends Thread {
                 return;
             }
             replyBody(s, 200, "OK", body, JSON);
+            return;
+        }
+        if (deleteAll) {
+            int[] r2 = cb.onDeleteAll();
+            String body = "{\n  \"ok\": " + (r2[1] == 0) + ",\n  \"deleted\": " + r2[0] + ",\n  \"failed\": " + r2[1] + "\n}\n";
+            if (r2[1] == 0) replyBody(s, 200, "OK", body, JSON);
+            else replyBody(s, 500, "Delete failed", body, JSON);
             return;
         }
         if (delete) {

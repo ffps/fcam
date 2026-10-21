@@ -439,20 +439,34 @@ select.field{background:#fff}
   async function deleteSelected() {
     if (busy || !sel.size) return;
     const list = [...sel];
-    if (!confirm(`Удалить фото: ${list.length} шт.?`)) return;
+    // everything is selected: one command removes all the photos at once
+    const all = files.length > 0 && list.length === files.length;
+    if (!confirm(all ? `Удалить все фото (${list.length} шт.)?` : `Удалить фото: ${list.length} шт.?`)) return;
     busy = true;
     let failed = 0;
-    for (let i = 0; i < list.length; i++) {
-      note(`Удаление ${i + 1} из ${list.length}…`, true);
+    let msg = '';
+    if (all) {
+      note('Удаление всех фото…', true);
       try {
-        const r = await api('delete', { name: list[i] });
-        if (!r.ok && r.status !== 404) failed++;
-      } catch (e) { failed++; }
+        const r = await api('delete_all');
+        let d = null;
+        try { d = await r.json(); } catch (e) { /* not JSON */ }
+        if (!r.ok) failed = d ? d.failed : list.length;
+        else if (d && d.deleted > list.length) msg = `Удалено: ${d.deleted} (на странице было ${list.length})`;
+      } catch (e) { failed = list.length; }
+    } else {
+      for (let i = 0; i < list.length; i++) {
+        note(`Удаление ${i + 1} из ${list.length}…`, true);
+        try {
+          const r = await api('delete', { name: list[i] });
+          if (!r.ok && r.status !== 404) failed++;
+        } catch (e) { failed++; }
+      }
     }
     busy = false;
     sel.clear();
     updateSel();
-    note(failed ? `Не удалось удалить: ${failed}` : '');
+    note(failed ? `Не удалось удалить: ${failed}` : msg, !failed && !!msg);
     load();
   }
 

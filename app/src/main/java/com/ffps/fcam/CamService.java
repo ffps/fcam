@@ -199,6 +199,11 @@ public class CamService extends Service implements Camera.PreviewCallback {
             }
 
             @Override
+            public int[] onDeleteAll() {
+                return deleteAllPhotos();
+            }
+
+            @Override
             public int onDelete(String name) {
                 File f = findPhoto(name);
                 if (f == null) return 1;
@@ -689,6 +694,42 @@ public class CamService extends Service implements Camera.PreviewCallback {
         }
         deleteLog = path + ": " + lg;
         return !still;
+    }
+
+    /**
+     * Удаляет все фото (*.jpg) из папки. Быстро: сначала простое удаление всех файлов, затем один раз читается
+     * каталог, и только для оставшихся файлов выполняется полная процедура (переименование, медиа-провайдер, rm).
+     * Возвращает {удалено, не удалось}.
+     */
+    private int[] deleteAllPhotos() {
+        java.util.ArrayList<File> all = photos();
+        for (File f : all) f.delete();
+        // записи о файлах всей папки убираем из медиа-базы одним запросом (сами файлы уже удалены)
+        try {
+            getContentResolver().delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    MediaStore.Images.Media.DATA + " LIKE ?", new String[]{photoDir().getAbsolutePath() + "/%"});
+        } catch (Exception ignored) {
+        }
+        java.util.HashSet<String> left = new java.util.HashSet<String>();
+        String[] names = photoDir().list();
+        if (names != null) {
+            for (String n : names) left.add(n);
+        }
+        int deleted = 0, failed = 0;
+        String detail = "";
+        for (File f : all) {
+            if (!left.contains(f.getName())) {
+                deleted++;
+            } else if (deletePhotoFile(f)) {
+                deleted++;
+            } else {
+                failed++;
+                detail = deleteLog;
+            }
+        }
+        pruneThumbs();
+        deleteLog = "delete_all: deleted=" + deleted + " failed=" + failed + (detail.length() > 0 ? " | " + detail : "");
+        return new int[]{deleted, failed};
     }
 
     /** Удаляет фото старше cfg.keepDays суток (0 - не удалять). */
