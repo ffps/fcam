@@ -10,6 +10,7 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URLDecoder;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Минимальный HTTP-сервер. Параметр password - в строке запроса.
@@ -61,6 +62,8 @@ public class HttpCtl extends Thread {
 
     private static final String JSON = "application/json; charset=utf-8";
     private static final int MAX_BODY = 16384;
+    private static final int MAX_CONN = 8;       // больше одновременных подключений слабому устройству не нужно
+    private final AtomicInteger active = new AtomicInteger();
 
     private static final String NO_REBOOT = "{\n"
             + "  \"ok\": false,\n"
@@ -120,13 +123,27 @@ public class HttpCtl extends Thread {
         while (!stopped) {
             try {
                 final Socket s = ss.accept();
+                if (active.incrementAndGet() > MAX_CONN) {      // слишком много подключений: отвечаем «занято» и закрываем
+                    try {
+                        s.getOutputStream().write(("HTTP/1.1 503 Busy\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").getBytes("ISO-8859-1"));
+                    } catch (IOException ignored) {
+                    }
+                    try {
+                        s.close();
+                    } catch (IOException ignored) {
+                    }
+                    active.decrementAndGet();
+                    continue;
+                }
                 Thread t = new Thread(new Runnable() {
                     @Override
                     public void run() {
+                        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
                         try {
                             handle(s);
                         } catch (IOException ignored) {
                         } finally {
+                            active.decrementAndGet();
                             try {
                                 s.close();
                             } catch (IOException ignored) {

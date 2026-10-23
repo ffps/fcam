@@ -29,7 +29,10 @@ import java.util.Enumeration;
 
 public class MainActivity extends Activity {
 
-    private EditText eThr, eGap, eCnt, eInt, eKeep, eReboot, ePort, ePass;
+    /** Признак «открыть настройки» (ставится в уведомлении сервиса). */
+    public static final String EXTRA_SETTINGS = "fcam.settings";
+
+    private EditText ePoll, eThr, eGap, eCnt, eInt, eKeep, eReboot, ePort, ePass;
     private CheckBox cbAuto;
     private Spinner spCam;
     private TextView tvStatus, tvHint, tvVer;
@@ -38,6 +41,7 @@ public class MainActivity extends Activity {
     private final Handler h = new Handler();
     private Boolean lastOn = null;      // last applied state of the controls
     private String lastStatus = "";
+    private boolean silent = false;     // приложение только запустило сервис и сразу закрылось, экрана нет
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -50,7 +54,23 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        // Если включён автозапуск, сервис ещё не работает и нас открыли не из уведомления: просто запускаем сервис
+        // без окна настроек. Если сервис уже работает (или открыли из уведомления) - показываем настройки.
+        Prefs p0 = Prefs.load(this);
+        boolean forceUi = getIntent() != null && getIntent().getBooleanExtra(EXTRA_SETTINGS, false);
+        boolean permOk = Build.VERSION.SDK_INT < 23
+                || checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+        if (!forceUi && p0.autostart && !CamService.running && permOk) {
+            silent = true;
+            p0.enabled = true;
+            p0.save(this);
+            CamService.start(this);
+            finish();
+            overridePendingTransition(0, 0);
+            return;
+        }
         setContentView(R.layout.activity_main);
+        ePoll = (EditText) findViewById(R.id.ePoll);
         eThr = (EditText) findViewById(R.id.eThr);
         eGap = (EditText) findViewById(R.id.eGap);
         eCnt = (EditText) findViewById(R.id.eCnt);
@@ -100,6 +120,7 @@ public class MainActivity extends Activity {
         Prefs p = Prefs.load(this);
         cbAuto.setChecked(p.autostart);
         if (p.camera < names.length) spCam.setSelection(p.camera);
+        ePoll.setText(String.valueOf(p.pollMs));
         eThr.setText(fmt(p.threshold));
         eGap.setText(String.valueOf(p.minGap));
         eCnt.setText(String.valueOf(p.count));
@@ -152,12 +173,17 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (silent) return;
         refresh();
         h.postDelayed(tick, 1500);
     }
 
     @Override
     protected void onPause() {
+        if (silent) {
+            super.onPause();
+            return;
+        }
         h.removeCallbacks(tick);
         super.onPause();
     }
@@ -194,6 +220,7 @@ public class MainActivity extends Activity {
             boolean e = !on;
             cbAuto.setEnabled(e);
             spCam.setEnabled(e);
+            ePoll.setEnabled(e);
             eThr.setEnabled(e);
             eGap.setEnabled(e);
             eCnt.setEnabled(e);
@@ -337,6 +364,7 @@ public class MainActivity extends Activity {
         try {
             p.autostart = cbAuto.isChecked();
             p.camera = Math.max(0, spCam.getSelectedItemPosition());
+            p.pollMs = Integer.parseInt(ePoll.getText().toString().trim());
             p.threshold = Float.parseFloat(eThr.getText().toString().trim().replace(',', '.'));
             p.minGap = Integer.parseInt(eGap.getText().toString().trim());
             p.count = Integer.parseInt(eCnt.getText().toString().trim());
@@ -347,6 +375,10 @@ public class MainActivity extends Activity {
             p.password = ePass.getText().toString();
         } catch (NumberFormatException ex) {
             Toast.makeText(this, "Проверьте числовые поля", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (p.pollMs != 0 && (p.pollMs < 50 || p.pollMs > 60000)) {
+            Toast.makeText(this, "Период опроса: 0 (не анализировать видео) или от 50 до 60000 мс", Toast.LENGTH_LONG).show();
             return;
         }
         if (p.rebootCron.length() > 0 && !Schedule.isValid(p.rebootCron)) {

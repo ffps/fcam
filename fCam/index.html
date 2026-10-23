@@ -201,6 +201,9 @@ select.field{background:#fff}
     <label class="fl" for="c_camera">Камера</label>
     <select class="field" id="c_camera"></select>
 
+    <label class="fl" for="c_poll_ms">Период опроса камеры, мс (0 — не анализировать видео, фото только по команде)</label>
+    <input class="field" id="c_poll_ms" type="number" step="1" min="0" max="60000" required>
+
     <label class="fl" for="c_threshold">Порог срабатывания, % изменившихся точек</label>
     <input class="field" id="c_threshold" type="number" step="any" min="0.01" required>
 
@@ -623,7 +626,7 @@ select.field{background:#fff}
   }
 
   /* ---------- settings ---------- */
-  const NUM = { threshold: parseFloat, min_gap: parseInt, count: parseInt, interval: parseFloat, keep_days: parseInt, port: parseInt };
+  const NUM = { poll_ms: parseInt, threshold: parseFloat, min_gap: parseInt, count: parseInt, interval: parseFloat, keep_days: parseInt, port: parseInt };
 
   async function openConfig() {
     let c, inf = null;

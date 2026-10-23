@@ -38,6 +38,18 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="8dp"
+            android:text="Период опроса камеры, мс (0 — не анализировать видео, фото только по команде)" />
+
+        <EditText
+            android:id="@+id/ePoll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
             android:text="Порог срабатывания, % изменившихся точек" />
 
         <EditText

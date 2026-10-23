@@ -8,6 +8,7 @@ public class Prefs {
     public boolean enabled = false;
     public boolean autostart = false;
     public int camera = 0;         // при первом запуске берётся фронтальная камера (см. load)
+    public int pollMs = 500;        // период опроса камеры, мс (0 - видео не анализируется, фото только по команде)
     public float threshold = 10f;  // % изменившихся точек
     public int minGap = 30;        // сек между началами серий
     public int count = 2;          // кадров в серии
@@ -50,6 +51,7 @@ public class Prefs {
         p.autostart = s.getBoolean("autostart", p.autostart);
         // пока камера не выбрана и не сохранена, по умолчанию фронтальная
         p.camera = s.contains("camera") ? s.getInt("camera", p.camera) : frontCameraIndex();
+        p.pollMs = s.getInt("pollMs", p.pollMs);
         p.threshold = s.getFloat("threshold", p.threshold);
         p.minGap = s.getInt("minGap", p.minGap);
         p.count = s.getInt("count", p.count);
@@ -63,6 +65,7 @@ public class Prefs {
 
     /** Проверка значений; null, если всё корректно. */
     public String error() {
+        if (pollMs != 0 && (pollMs < 50 || pollMs > 60000)) return "poll_ms должен быть 0 (не анализировать видео) или от 50 до 60000";
         if (!(threshold > 0)) return "threshold должен быть больше 0";
         if (minGap < 0) return "min_gap не может быть отрицательным";
         if (count < 1) return "count должен быть не меньше 1";
@@ -80,6 +83,7 @@ public class Prefs {
                 .putBoolean("enabled", enabled)
                 .putBoolean("autostart", autostart)
                 .putInt("camera", camera)
+                .putInt("pollMs", pollMs)
                 .putFloat("threshold", threshold)
                 .putInt("minGap", minGap)
                 .putInt("count", count)

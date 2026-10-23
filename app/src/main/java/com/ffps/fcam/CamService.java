@@ -63,8 +63,8 @@ public class CamService extends Service implements Camera.PreviewCallback {
     private static final String CH_SHOT = "fcam_shot";
     private static final int PIXEL_DIFF = 25;      // порог разницы яркости точки
     private static final int STEP = 4;             // прореживание кадра при анализе
-    private static final long ANALYZE_EVERY_MS = 200;
     private static final long SETTLE_MS = 1500;    // пауза после старта превью (автоэкспозиция)
+    private static final long SHOT_NOTE_MIN_MS = 10000;   // уведомление о снимке живёт не меньше 10 с
 
     public static void start(Context c) {
         Intent i = new Intent(c, CamService.class);
@@ -97,16 +97,14 @@ public class CamService extends Service implements Camera.PreviewCallback {
     private volatile boolean shooting = false;
     private long shootStart;
     private long lastSeries = 0;
-    private long lastAnalyze = 0;
     private long settleUntil = 0;
     private int pw, ph;
-    private byte[] buf;
     private byte[] cur, prev;
     private boolean havePrev = false;
     private int shotIdx;
     private String tag = "m";
     private String stamp;
-    private String status = "";
+    private String lastIp = "";
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -124,14 +122,12 @@ public class CamService extends Service implements Camera.PreviewCallback {
                 if (o != ORIENTATION_UNKNOWN) lastOrientation = o;
             }
         };
-        if (orient.canDetectOrientation()) orient.enable();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         cfg = Prefs.load(this);
         lastError = null;
-        status = "Работает, порт " + cfg.port;
         try {
             startForegroundCompat(buildRunNotification());
         } catch (Exception e) {
@@ -151,6 +147,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
         if (ht == null) {
             serviceStart = SystemClock.elapsedRealtime();
             rebootInit();
+            mainH.postDelayed(ipTick, 60000);
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "fcam:service");
             wl.acquire();
@@ -168,9 +165,12 @@ public class CamService extends Service implements Camera.PreviewCallback {
     private final Handler mainH = new Handler(Looper.getMainLooper());
 
     private void startWorkers(long camDelayMs) {
-        ht = new HandlerThread("fcam-cam");
+        ht = new HandlerThread("fcam-cam", android.os.Process.THREAD_PRIORITY_BACKGROUND);      // фоновая работа не должна мешать системе
         ht.start();
         ch = new Handler(ht.getLooper());
+        openFailures = 0;
+        // при периоде опроса 0 датчик положения включается только на время серии
+        (cfg.pollMs > 0 ? orientOn : orientOff).run();
         ch.postDelayed(openRunnable, camDelayMs);
         ch.post(new Runnable() {
             @Override
@@ -267,7 +267,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
             @Override
             public void onError(String msg) {
                 lastError = msg;
-                updateStatus(msg);
+                refreshNotification();
             }
         });
         http.start();
@@ -302,8 +302,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
         camReady = false;
         camOk = false;
         lastError = null;
-        status = "Работает, порт " + cfg.port;
-        nm.notify(ID_RUN, buildRunNotification());
+        refreshNotification();
         startWorkers(1000);      // камере нужно время, чтобы освободиться
         rebootInit();
     }
@@ -334,16 +333,47 @@ public class CamService extends Service implements Camera.PreviewCallback {
         return new Notification.Builder(this);
     }
 
+    private static String firstIp() {
+        java.util.ArrayList<String> l = localIps();
+        return l.isEmpty() ? "" : l.get(0);
+    }
+
+    /** Постоянное уведомление: "fCam server is running" и адрес сервера; по нажатию открываются настройки. */
     private Notification buildRunNotification() {
-        PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), 0);
+        Intent open = new Intent(this, MainActivity.class);
+        open.putExtra(MainActivity.EXTRA_SETTINGS, true);
+        PendingIntent pi = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_UPDATE_CURRENT);
+        lastIp = firstIp();
+        String url = lastIp.length() > 0 ? "http://" + lastIp + ":" + cfg.port : "port " + cfg.port;
+        String title = "fCam server is running";
+        String text = url;
+        if (lastError != null) {
+            title = "fCam: port " + cfg.port + " is unavailable";
+        } else if (!camOk) {
+            text = url + "  (camera unavailable)";
+        }
         Notification.Builder b = builder(CH_RUN)
                 .setSmallIcon(R.drawable.ic_stat)
-                .setContentTitle("fCam")
-                .setContentText(status)
+                .setContentTitle(title)
+                .setContentText(text)
                 .setContentIntent(pi)
                 .setOngoing(true);
         return b.build();
     }
+
+    private void refreshNotification() {
+        if (running) nm.notify(ID_RUN, buildRunNotification());
+    }
+
+    /** Раз в минуту проверяет, не сменился ли IP-адрес, и обновляет уведомление. */
+    private final Runnable ipTick = new Runnable() {
+        @Override
+        public void run() {
+            if (!running) return;
+            if (!firstIp().equals(lastIp)) refreshNotification();
+            mainH.postDelayed(this, 60000);
+        }
+    };
 
     private void startForegroundCompat(Notification n) {
         if (Build.VERSION.SDK_INT >= 29) {
@@ -353,11 +383,6 @@ public class CamService extends Service implements Camera.PreviewCallback {
         }
     }
 
-    private void updateStatus(String s) {
-        status = s;
-        nm.notify(ID_RUN, buildRunNotification());
-    }
-
     private void notifyShot(String file, int n, int total) {
         Notification.Builder b = builder(CH_SHOT)
                 .setSmallIcon(R.drawable.ic_stat)
@@ -365,9 +390,22 @@ public class CamService extends Service implements Camera.PreviewCallback {
                 .setContentText(file)
                 .setAutoCancel(true);
         nm.notify(ID_SHOT, b.build());
+        // уведомления о снимках убираем через "минимальное время между сериями", но не раньше чем через 10 с
+        mainH.removeCallbacks(cancelShotNote);
+        mainH.postDelayed(cancelShotNote, Math.max(SHOT_NOTE_MIN_MS, cfg.minGap * 1000L));
     }
 
+    private final Runnable cancelShotNote = new Runnable() {
+        @Override
+        public void run() {
+            nm.cancel(ID_SHOT);
+        }
+    };
+
     // ---------- камера ----------
+
+    private int openFailures = 0;
+    private volatile boolean previewOn = false;
 
     private final Runnable openRunnable = new Runnable() {
         @Override
@@ -376,11 +414,40 @@ public class CamService extends Service implements Camera.PreviewCallback {
         }
     };
 
+    private final Camera.ErrorCallback errorCb = new Camera.ErrorCallback() {
+        @Override
+        public void onError(int error, Camera c) {
+            // например, умер медиасервер: объект камеры больше не работает, открываем заново
+            cameraLost();
+        }
+    };
+
+    /** Камера пропала или зависла: закрываем и пробуем открыть заново с растущей паузой. */
+    private void cameraLost() {
+        shooting = false;
+        camOk = false;
+        closeCam();
+        refreshNotification();
+        scheduleOpen();
+    }
+
+    /** Повтор открытия камеры: 10, 20, 40, 80, 160 и дальше 300 секунд (частые попытки грузят слабое устройство). */
+    private void scheduleOpen() {
+        long d = Math.min(300000L, 10000L << Math.min(openFailures, 5));
+        openFailures++;
+        Handler h = ch;
+        if (h != null) {
+            h.removeCallbacks(openRunnable);
+            h.postDelayed(openRunnable, d);
+        }
+    }
+
     private void openCam() {
         try {
             int n = Camera.getNumberOfCameras();
             int idx = cfg.camera < n ? cfg.camera : 0;
             cam = Camera.open(idx);
+            cam.setErrorCallback(errorCb);
             camInfo = new Camera.CameraInfo();
             Camera.getCameraInfo(idx, camInfo);
             appliedRot = -1;
@@ -411,10 +478,9 @@ public class CamService extends Service implements Camera.PreviewCallback {
             Camera.Size ps = cam.getParameters().getPreviewSize();
             pw = ps.width;
             ph = ps.height;
-            buf = new byte[pw * ph * ImageFormat.getBitsPerPixel(ImageFormat.NV21) / 8];
             tex = new SurfaceTexture(0);
             cam.setPreviewTexture(tex);
-            try {      // снижаем частоту превью до минимально достаточной для анализа (~5 к/с)
+            try {      // снижаем частоту превью до минимальной (>= 5 к/с)
                 Camera.Parameters p2 = cam.getParameters();
                 int[] bestR = null;
                 for (int[] r : p2.getSupportedPreviewFpsRange()) {
@@ -427,24 +493,35 @@ public class CamService extends Service implements Camera.PreviewCallback {
                 }
             } catch (Exception ignored) {
             }
-            startPreview();
+            openFailures = 0;
+            previewOn = false;
+            // период опроса 0: превью выключено, датчик камеры простаивает до команды на съёмку
+            if (cfg.pollMs > 0) startPreview();
             camReady = true;
             camOk = true;
-            if (lastError == null) updateStatus("Работает, порт " + cfg.port);
+            refreshNotification();
         } catch (Exception e) {
             camReady = false;
             camOk = false;
             closeCam();
-            updateStatus("Камера недоступна, повтор через 10 с");
-            if (ch != null) ch.postDelayed(openRunnable, 10000);
+            refreshNotification();
+            scheduleOpen();
         }
     }
 
     private void closeCam() {
         camReady = false;
+        previewOn = false;
+        Handler h = ch;
+        if (h != null) {
+            h.removeCallbacks(pollRunnable);
+            h.removeCallbacks(shotRunnable);
+            h.removeCallbacks(shootWatchdog);
+        }
         try {
             if (cam != null) {
-                cam.setPreviewCallbackWithBuffer(null);
+                cam.setErrorCallback(null);
+                cam.setPreviewCallback(null);
                 cam.stopPreview();
                 cam.release();
             }
@@ -459,29 +536,47 @@ public class CamService extends Service implements Camera.PreviewCallback {
     }
 
     private void startPreview() {
-        cam.setPreviewCallbackWithBuffer(this);
-        cam.addCallbackBuffer(buf);
         cam.startPreview();
-        settleUntil = System.currentTimeMillis() + SETTLE_MS;
+        previewOn = true;
         havePrev = false;
+        settleUntil = System.currentTimeMillis() + SETTLE_MS;
+        if (cfg.pollMs > 0) schedulePoll(SETTLE_MS);
     }
 
     // ---------- обнаружение движения ----------
 
+    private void schedulePoll(long delay) {
+        Handler h = ch;
+        if (h != null) {
+            h.removeCallbacks(pollRunnable);
+            h.postDelayed(pollRunnable, delay);
+        }
+    }
+
+    /**
+     * Раз в период опроса запрашивает у камеры один кадр. Между опросами кадры в приложение не передаются
+     * (камера крутит превью, но память не копируется и ничего не анализируется).
+     */
+    private final Runnable pollRunnable = new Runnable() {
+        @Override
+        public void run() {
+            Handler h = ch;
+            if (h == null || cfg.pollMs <= 0 || !camReady) return;
+            if (previewOn && !shooting && cam != null) {
+                try {
+                    cam.setOneShotPreviewCallback(CamService.this);
+                } catch (Exception ignored) {
+                }
+            }
+            h.postDelayed(this, cfg.pollMs);
+        }
+    };
+
     @Override
     public void onPreviewFrame(byte[] data, Camera c) {
-        try {
-            long now = System.currentTimeMillis();
-            if (shooting && now - shootStart > 30000) {   // серия зависла
-                shooting = false;
-            }
-            if (!shooting && now >= settleUntil && now - lastAnalyze >= ANALYZE_EVERY_MS) {
-                lastAnalyze = now;
-                analyze(data, now);
-            }
-        } finally {
-            if (cam != null) cam.addCallbackBuffer(data);
-        }
+        if (shooting || data == null) return;
+        long now = System.currentTimeMillis();
+        if (now >= settleUntil) analyze(data, now);
     }
 
     private void analyze(byte[] data, long now) {
@@ -520,15 +615,33 @@ public class CamService extends Service implements Camera.PreviewCallback {
     // ---------- серия кадров ----------
 
     private void startSeries(String t) {
-        if (shooting || !camReady) return;
+        if (shooting || !camReady || cam == null) return;
         shooting = true;
         shootStart = System.currentTimeMillis();
         lastSeries = shootStart;
         tag = t;
         shotIdx = 0;
         stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-        applyRotation();
-        shoot();
+        Handler h = ch;
+        if (h != null) {      // если камера не ответит, серию прерываем и открываем камеру заново
+            h.removeCallbacks(shootWatchdog);
+            h.postDelayed(shootWatchdog, 30000L + (long) (cfg.count * Math.max(cfg.interval, 0.3f) * 1000));
+        }
+        if (cfg.pollMs <= 0) mainH.post(orientOn);      // датчик положения нужен только на время серии
+        if (previewOn) {
+            shoot();
+        } else {
+            // превью выключено (период опроса 0): запускаем его и ждём, пока установится экспозиция
+            try {
+                startPreview();
+            } catch (Exception e) {
+                finishSeries();
+                cameraLost();
+                return;
+            }
+            if (h != null) h.postDelayed(shotRunnable, SETTLE_MS);
+            else finishSeries();
+        }
     }
 
     /** Угол поворота JPEG (камера записывает его в EXIF или поворачивает сама) по ориентации устройства. */
@@ -566,31 +679,34 @@ public class CamService extends Service implements Camera.PreviewCallback {
 
     private void shoot() {
         try {
+            applyRotation();
             cam.takePicture(null, null, jpeg);
         } catch (Exception e) {
             finishSeries();
+            cameraLost();
         }
     }
 
     private final Camera.PictureCallback jpeg = new Camera.PictureCallback() {
         @Override
         public void onPictureTaken(byte[] data, Camera c) {
+            previewOn = false;      // после takePicture превью остановлено
             String name = stamp + "_" + tag + (shotIdx + 1) + ".jpg";
             boolean ok = save(name, data);
             shotIdx++;
             if (ok) notifyShot(name, shotIdx, cfg.count);
-            try {
-                startPreview();
-            } catch (Exception e) {
-                finishSeries();
-                camReady = false;
-                closeCam();
-                Handler h1 = ch;
-                if (h1 != null) h1.post(openRunnable);
-                return;
+            boolean more = shotIdx < cfg.count;
+            if (more || cfg.pollMs > 0) {      // при периоде опроса 0 после последнего кадра превью не включаем
+                try {
+                    startPreview();
+                } catch (Exception e) {
+                    finishSeries();
+                    cameraLost();
+                    return;
+                }
             }
-            if (shotIdx < cfg.count) {
-                long delay = Math.max(300L, (long) (cfg.interval * 1000));
+            if (more) {
+                long delay = Math.max(cfg.pollMs > 0 ? 300L : 800L, (long) (cfg.interval * 1000));
                 Handler h2 = ch;
                 if (h2 != null) h2.postDelayed(shotRunnable, delay);
                 else finishSeries();
@@ -602,10 +718,37 @@ public class CamService extends Service implements Camera.PreviewCallback {
         }
     };
 
+    private final Runnable shootWatchdog = new Runnable() {
+        @Override
+        public void run() {
+            if (shooting) {      // камера не отвечает: открываем её заново
+                finishSeries();
+                cameraLost();
+            }
+        }
+    };
+
+    private final Runnable orientOn = new Runnable() {
+        @Override
+        public void run() {
+            if (orient != null && orient.canDetectOrientation()) orient.enable();
+        }
+    };
+
+    private final Runnable orientOff = new Runnable() {
+        @Override
+        public void run() {
+            if (orient != null) orient.disable();
+        }
+    };
+
     private void finishSeries() {
         shooting = false;
         havePrev = false;
         settleUntil = System.currentTimeMillis() + SETTLE_MS;
+        Handler h = ch;
+        if (h != null) h.removeCallbacks(shootWatchdog);
+        if (cfg.pollMs <= 0) mainH.post(orientOff);
     }
 
     public static File photoDir() {
@@ -939,6 +1082,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
         StringBuilder sb = new StringBuilder("{\n");
         sb.append("  \"autostart\": ").append(p.autostart).append(",\n");
         sb.append("  \"camera\": ").append(p.camera).append(",\n");
+        sb.append("  \"poll_ms\": ").append(p.pollMs).append(",\n");
         sb.append("  \"threshold\": ").append(p.threshold).append(",\n");
         sb.append("  \"min_gap\": ").append(p.minGap).append(",\n");
         sb.append("  \"count\": ").append(p.count).append(",\n");
@@ -969,6 +1113,7 @@ public class CamService extends Service implements Camera.PreviewCallback {
         try {
             if (j.has("autostart")) p.autostart = j.getBoolean("autostart");
             if (j.has("camera")) p.camera = j.getInt("camera");
+            if (j.has("poll_ms")) p.pollMs = j.getInt("poll_ms");
             if (j.has("threshold")) p.threshold = (float) j.getDouble("threshold");
             if (j.has("min_gap")) p.minGap = j.getInt("min_gap");
             if (j.has("count")) p.count = j.getInt("count");
