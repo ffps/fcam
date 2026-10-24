@@ -119,6 +119,14 @@ public class MainActivity extends Activity {
 
         Prefs p = Prefs.load(this);
         cbAuto.setChecked(p.autostart);
+        cbAuto.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(android.widget.CompoundButton v, boolean checked) {
+                Prefs cur = Prefs.load(MainActivity.this);
+                cur.autostart = checked;
+                cur.save(MainActivity.this);
+            }
+        });
         if (p.camera < names.length) spCam.setSelection(p.camera);
         ePoll.setText(String.valueOf(p.pollMs));
         eThr.setText(fmt(p.threshold));
@@ -218,7 +226,6 @@ public class MainActivity extends Activity {
         if (lastOn == null || lastOn != on) {
             lastOn = on;
             boolean e = !on;
-            cbAuto.setEnabled(e);
             spCam.setEnabled(e);
             ePoll.setEnabled(e);
             eThr.setEnabled(e);
